@@ -1,8 +1,10 @@
+import { isOpenAIDecisionProvider } from "../jev-decision-service";
 import { IconExternal, IconKey } from "../icons";
 import { useT } from "../i18n/shared";
 import { Trans } from "../i18n/provider";
 import type { CatalogPreset } from "./provider-catalog/provider-presets";
 import type { ProviderPayloadForm } from "../provider-payload";
+import { formatProviderAdapterName } from "../provider-icons";
 import { AddProviderField } from "./add-provider-modal-field";
 import { baseUrlForChoice } from "../base-url-choice";
 import { canConfigureResponsesReasoningReplay } from "../responses-reasoning-replay";
@@ -66,7 +68,7 @@ export function AddProviderFormPane({
               {t("modal.setupStep1Suffix")}
             </li>
             <li>{t("modal.setupStep2")}</li>
-            <li>{t("modal.setupStep3")}</li>
+            <li>{t(isOpenAIDecisionProvider(form) ? "modal.setupDecisionStep3" : "modal.setupStep3")}</li>
           </ol>
           {preset.note && <div className="text-label" style={{ color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>{preset.note}</div>}
           {/\{[^}]*\}/.test(form.baseUrl) && (<div className="text-label" style={{ color: "var(--amber)", marginTop: 6 }}>{t("modal.baseUrlPlaceholderHint")}</div>)}
@@ -79,7 +81,7 @@ export function AddProviderFormPane({
       {!isReservedForward && <>
         <AddProviderField label={t("modal.adapter")}>
           <select className="input" value={form.adapter} onChange={e => onFormChange({ ...form, adapter: e.target.value })}>
-            {adapterOptions(form.adapter).map(a => <option key={a} value={a}>{a}</option>)}
+            {adapterOptions(form.adapter).map(a => <option key={a} value={a}>{formatProviderAdapterName(form.name, a, form.baseUrl)}</option>)}
           </select>
         </AddProviderField>
         {preset.baseUrlChoices && preset.baseUrlChoices.length > 0 ? (
@@ -182,7 +184,7 @@ export function AddProviderFormPane({
           )}
         </>
       )}
-      {!isReservedForward && <AddProviderField label={t("modal.defaultModel")}>
+      {!isReservedForward && <AddProviderField label={t(isOpenAIDecisionProvider(form) ? "cws.jev.decisionModel" : "modal.defaultModel")}>
         <input className="input" value={form.defaultModel} onChange={e => onFormChange({ ...form, defaultModel: e.target.value })} placeholder={t("modal.defaultModelPlaceholder")} />
       </AddProviderField>}
       {error && <div className="text-control" role="alert" style={{ color: "var(--red)" }}>{error}</div>}

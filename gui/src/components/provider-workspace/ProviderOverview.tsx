@@ -20,6 +20,7 @@ import type { CatalogPreset } from "../provider-catalog/provider-presets";
 import ProviderSponsor from "./ProviderSponsor";
 import ProviderCompletionTest, { type CompletionProbeStatus } from "./ProviderCompletionTest";
 import { useProviderProbeState, type ProviderProbeController } from "./use-provider-probe-state";
+import { isOpenAIDecisionProvider } from "../../jev-decision-service";
 
 type ConnectionTestResult = {
   applicable?: boolean;
@@ -77,6 +78,8 @@ export default function ProviderOverview({
   reauthBusy?: boolean;
 }) {
   const t = useT();
+  const openaiDecision = isOpenAIDecisionProvider(item);
+  const createRouterLabel = t(openaiDecision ? "cws.openaiDecisions.create" : "cws.jev.create");
   const { locale } = useI18n();
   const status = binProviderStatus(item);
   const needsAttention = Boolean(item.activeNeedsReauth) || oauth?.needsReauth === true;
@@ -275,11 +278,11 @@ export default function ProviderOverview({
             <dd>{displayEmail ? `${authModeLabel(item, t)} · ${displayEmail}` : authModeLabel(item, t)}</dd>
           </div>
           <div className="pws-kv-row">
-            <dt>{t("modal.defaultModel")}</dt>
+            <dt>{t(openaiDecision ? "cws.jev.decisionModel" : "modal.defaultModel")}</dt>
             <dd>{item.defaultModel ?? <span className="muted">—</span>}</dd>
           </div>
         </dl>
-        <div className="pws-first-response" aria-label={t("pws.firstResponse.title")}>
+        {!openaiDecision && <div className="pws-first-response" aria-label={t("pws.firstResponse.title")}>
           <div className="pws-first-response-row" data-first-response-step="provider" data-step-state={providerStepState}>
             <span className="pws-first-response-label">{t("pws.firstResponse.stepProvider")}</span>
             <span className={providerStepState === "saved" ? "pws-status-ok" : "pws-status-warn"}>
@@ -343,7 +346,7 @@ export default function ProviderOverview({
               </button>
             )}
           </div>
-        </div>
+        </div>}
         {apiBase !== undefined && (
           <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
             <button
@@ -375,7 +378,7 @@ export default function ProviderOverview({
             )}
           </div>
         )}
-        {apiBase !== undefined && (
+        {apiBase !== undefined && !openaiDecision && (
           <ProviderCompletionTest
             key={item.name}
             apiBase={apiBase}
@@ -400,11 +403,11 @@ export default function ProviderOverview({
       </section>
 
       {item.adapter === "jev-decision" && onCreateJevAuto && (
-        <section className="pws-section" aria-label={t("cws.jev.create")}>
-          <h3 className="pws-section-title">{t("cws.jev.create")}</h3>
-          <p className="muted" style={{ marginTop: 0 }}>{t("cws.jev.setupHint")}</p>
+        <section className="pws-section" aria-label={createRouterLabel}>
+          <h3 className="pws-section-title">{createRouterLabel}</h3>
+          <p className="muted" style={{ marginTop: 0 }}>{t(openaiDecision ? "cws.openaiDecisions.setupHint" : "cws.jev.setupHint")}</p>
           <button type="button" className="btn btn-primary btn-sm" onClick={onCreateJevAuto}>
-            {t("cws.jev.create")}
+            {createRouterLabel}
           </button>
         </section>
       )}
