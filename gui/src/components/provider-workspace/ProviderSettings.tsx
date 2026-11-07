@@ -17,6 +17,7 @@ import { startVisibilityPoll } from "../../visibility-poll";
 import { isOpenAIDecisionProvider } from "../../jev-decision-service";
 import { useT } from "../../i18n/shared";
 import { IconLock } from "../../icons";
+import { Select } from "../../ui";
 import { formatProviderAdapterName, isCatalogProviderId } from "../../provider-icons";
 import { openAiAccountProviderState } from "../../provider-payload";
 import { canConfigureResponsesReasoningReplay } from "../../responses-reasoning-replay";
@@ -336,15 +337,10 @@ export default function ProviderSettings({
    * handler: a floating `.then` in a JSX handler has no rejection path and is what
    * `no-floating-then-in-jsx-handler` exists to catch.
    */
-  const requestAccountMode = async (next: "pool" | "direct", select: HTMLSelectElement) => {
-    if (await confirmAction({ message: t("pws.accountModeConfirm") })) {
-      await applyAccountMode(next);
-      return;
-    }
-    // Keep the visible choice aligned with the applied mode. React re-renders this
-    // controlled <select> only when `accountMode` changes, and a refusal leaves it
-    // unchanged, so the declined option would otherwise stay shown.
-    select.value = accountMode;
+  const requestAccountMode = async (next: "pool" | "direct") => {
+    // A refusal leaves `accountMode` unchanged, and the Select only ever shows that state,
+    // so the declined option never appears chosen.
+    if (await confirmAction({ message: t("pws.accountModeConfirm") })) await applyAccountMode(next);
   };
 
   const discard = () => {
@@ -401,9 +397,8 @@ export default function ProviderSettings({
       <label className="pwi-settings-field">
         <span className="pwi-settings-label">{t("modal.adapter")}</span>
         {isPreset ? <input className="input" value={formatProviderAdapterName(item.name, adapter, baseUrl)} readOnly disabled /> : (
-          <select className="input" value={adapter} onChange={e => setAdapter(e.target.value)}>
-            {adapterOptions.map(a => <option key={a} value={a}>{formatProviderAdapterName(item.name, a, baseUrl)}</option>)}
-          </select>
+          <Select fullWidth label={t("modal.adapter")} value={adapter} onChange={setAdapter}
+            options={adapterOptions.map(a => ({ value: a, label: formatProviderAdapterName(item.name, a, baseUrl) }))} />
         )}
       </label>
       {!openaiDecision && <ProviderProtocolPanel
@@ -417,19 +412,16 @@ export default function ProviderSettings({
         <>
           <label className="pwi-settings-field">
             <span className="pwi-settings-label">{t("modal.endpoint")}</span>
-            <select
-              className="input"
+            <Select
+              fullWidth
+              label={t("modal.endpoint")}
               value={endpointChoice}
-              onChange={e => {
-                const id = e.target.value;
+              onChange={id => {
                 setEndpointChoice(id);
                 setBaseUrl(baseUrlForChoice(baseUrlChoices, id, baseUrl));
               }}
-            >
-              {baseUrlChoices!.map(c => (
-                <option key={c.id} value={c.id}>{endpointLabel(c.id, c.label)}</option>
-              ))}
-            </select>
+              options={baseUrlChoices!.map(c => ({ value: c.id, label: endpointLabel(c.id, c.label) }))}
+            />
           </label>
           {endpointChoice === "custom" && (
             <label className="pwi-settings-field">
@@ -447,24 +439,24 @@ export default function ProviderSettings({
       {adapter.trim() === "cursor" && (
         <label className="pwi-settings-field">
           <span className="pwi-settings-label">{t("pws.cursorTransport")}</span>
-          <select
-            className="input"
+          <Select
+            fullWidth
+            label={t("pws.cursorTransport")}
             value={cursorHttpVersion}
-            onChange={e => setCursorHttpVersion(e.target.value as CursorHttpVersion)}
-          >
-            <option value="http2">{t("pws.cursorTransportHttp2")}</option>
-            <option value="http1.1">{t("pws.cursorTransportHttp1")}</option>
-          </select>
+            onChange={value => setCursorHttpVersion(value as CursorHttpVersion)}
+            options={[
+              { value: "http2", label: t("pws.cursorTransportHttp2") },
+              { value: "http1.1", label: t("pws.cursorTransportHttp1") },
+            ]}
+          />
           <span className="pwi-settings-hint">{t("pws.cursorTransportDesc")}</span>
         </label>
       )}
       <label className="pwi-settings-field">
         <span className="pwi-settings-label">{t(openaiDecision ? "cws.jev.decisionModel" : "pws.cell.defaultModel")}</span>
         {!openaiDecision && modelOptions.length > 0 ? (
-          <select className="input" value={defaultModel} onChange={e => setDefaultModel(e.target.value)}>
-            <option value="">{t("pws.defaultModelNone")}</option>
-            {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <Select fullWidth label={t("pws.cell.defaultModel")} value={defaultModel} onChange={setDefaultModel}
+            options={[{ value: "", label: t("pws.defaultModelNone") }, ...modelOptions.map(m => ({ value: m, label: m }))]} />
         ) : (
           <input className="input" value={defaultModel} onChange={e => setDefaultModel(e.target.value)} placeholder={t("pws.optionalPlaceholder")} />
         )}
@@ -472,31 +464,32 @@ export default function ProviderSettings({
       <label className="pwi-settings-field">
         <span className="pwi-settings-label">{t("pws.authMode")}</span>
         {isPreset ? <input className="input" value={authModeLabel(item, t)} readOnly disabled /> : (
-          <select className="input" value={authMode} onChange={e => setAuthMode(e.target.value)}>
-            <option value="key">{t("modal.badge.apiKey")}</option>
-            <option value="forward">{t("pws.auth.chatgptPassthrough")}</option>
-            <option value="oauth">{t("modal.badge.oauth")}</option>
-            <option value="local">{t("modal.badge.local")}</option>
-          </select>
+          <Select fullWidth label={t("pws.authMode")} value={authMode} onChange={setAuthMode} options={[
+            { value: "key", label: t("modal.badge.apiKey") },
+            { value: "forward", label: t("pws.auth.chatgptPassthrough") },
+            { value: "oauth", label: t("modal.badge.oauth") },
+            { value: "local", label: t("modal.badge.local") },
+          ]} />
         )}
       </label>
       {isCanonicalOpenAi && (
         <label className="pwi-settings-field">
           <span className="pwi-settings-label">{t("codexAuth.accountModeTitle")}</span>
-          <select
-            className="input"
+          <Select
+            fullWidth
+            label={t("codexAuth.accountModeTitle")}
             value={accountMode}
             disabled={modeSaving || saving}
-            onChange={e => {
-              const next = e.target.value as "pool" | "direct";
+            onChange={value => {
+              const next = value as "pool" | "direct";
               if (next === accountMode) return;
-              // currentTarget is read here: it is null once the handler resumes after an await.
-              void requestAccountMode(next, e.currentTarget);
+              void requestAccountMode(next);
             }}
-          >
-            <option value="pool">{t("codexAuth.accountModePool")}</option>
-            <option value="direct">{t("codexAuth.accountModeDirect")}</option>
-          </select>
+            options={[
+              { value: "pool", label: t("codexAuth.accountModePool") },
+              { value: "direct", label: t("codexAuth.accountModeDirect") },
+            ]}
+          />
           <span className="pwi-settings-hint">
             {accountMode === "direct" ? t("codexAuth.accountModeDirectDesc") : t("codexAuth.accountModePoolDesc")}
           </span>
@@ -514,10 +507,11 @@ export default function ProviderSettings({
       {supportsApiKeyTransport && (
         <label className="pwi-settings-field">
           <span className="pwi-settings-label">{t("modal.apiKeyTransport")}</span>
-          <select className="input" value={apiKeyTransport} onChange={e => setApiKeyTransport(e.target.value as "x-api-key" | "bearer")}>
-            <option value="x-api-key">{t("modal.apiKeyTransportNative")}</option>
-            <option value="bearer">{t("modal.apiKeyTransportBearer")}</option>
-          </select>
+          <Select fullWidth label={t("modal.apiKeyTransport")} value={apiKeyTransport}
+            onChange={value => setApiKeyTransport(value as "x-api-key" | "bearer")} options={[
+              { value: "x-api-key", label: t("modal.apiKeyTransportNative") },
+              { value: "bearer", label: t("modal.apiKeyTransportBearer") },
+            ]} />
         </label>
       )}
       <label className="pwi-settings-field">

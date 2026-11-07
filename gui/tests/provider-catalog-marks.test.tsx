@@ -4,6 +4,7 @@ import { act } from "react";
 import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import AddProviderModal from "../src/components/AddProviderModal";
+import { selectOptions, selectTrigger, selectValue } from "./helpers/custom-select";
 
 /**
  * The Add-Provider catalog is the list a user reads to CHOOSE a provider, and it
@@ -98,9 +99,10 @@ test("OpenAI Decisions shows its brand and preserves the internal adapter when s
   expect(row.querySelector(".chip")?.textContent).toBe("openai-decisions");
 
   await act(async () => { row.click(); });
-  const adapter = host.querySelector<HTMLOptionElement>('option[value="jev-decision"]')!;
-  expect(adapter.textContent).toBe("openai-decisions");
-  expect((adapter.parentElement as HTMLSelectElement).value).toBe("jev-decision");
+  const adapter = selectTrigger(host, '[role="combobox"][data-value="jev-decision"]');
+  expect(selectValue(adapter)).toBe("jev-decision");
+  expect((await selectOptions(adapter)).find(option => option.value === "jev-decision")?.label)
+    .toBe("openai-decisions");
   expect(host.textContent).toContain("Add the provider, then test its connection.");
   expect(host.textContent).not.toContain("models are auto-discovered");
   expect(host.textContent).toContain("Decision model");
