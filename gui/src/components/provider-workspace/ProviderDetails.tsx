@@ -9,7 +9,7 @@ import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { formatProviderDisplayName } from "../../provider-icons";
 import { isAccountProvider, isFreeProvider } from "../../provider-workspace/catalog";
 import { isLocalProvider } from "../../provider-workspace/kind";
-import { providerAuthSurface } from "../../provider-workspace/auth";
+import { oauthAccountDisplayLabel, providerAuthSurface } from "../../provider-workspace/auth";
 import { ProviderIcon } from "./ProviderRail";
 import { Switch } from "../../ui";
 import { IconChevron, IconTrash } from "../../icons";
@@ -139,6 +139,7 @@ export default function ProviderDetails({
   const free = useMemo(() => isFreeProvider(item), [item]);
   const local = useMemo(() => isLocalProvider(item), [item]);
   const authSurface = useMemo(() => providerAuthSurface(item), [item]);
+  const activeOAuthAccount = accounts?.find(account => account.active);
   const currentQuotaReading = authSurface === "oauth-accounts"
     ? accounts?.find(account => account.active)
     : authSurface === "api-keys" ? keys?.find(entry => entry.active) : undefined;
@@ -375,6 +376,8 @@ export default function ProviderDetails({
             currentQuotaReading={currentQuotaReading}
             onRefreshQuota={onRefreshQuota}
             oauthEmail={oauthEmail}
+            currentAccountLabel={authSurface === "oauth-accounts" && accountLoadState === "ready" && activeOAuthAccount
+              ? oauthAccountDisplayLabel(accounts ?? [], activeOAuthAccount, t) : undefined}
             oauth={oauth}
             onEditSettings={() => switchTab("settings")}
             onViewUsage={() => switchTab("usage")}

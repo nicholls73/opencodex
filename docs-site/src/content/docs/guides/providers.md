@@ -13,6 +13,9 @@ These links preserve the preset's referral parameters. Sponsor information is sh
 the configured provider name, adapter and endpoint match the preset; it never changes routing,
 account selection or defaults.
 
+While a provider login is in progress, its Accounts panel offers **Cancel** once sign-in
+instructions appear.
+
 ## OpenAI account modes
 
 | Provider id | Use | Credential/account rule |
@@ -182,8 +185,9 @@ for a model replaces its row.
 On native Chat Completions, for a model with reasoning enabled, a caller's `ultra` is sent as `max`, or as the model's highest
 declared rung below `max` (`high` on Large 4). This applies to every `openai-chat` provider
 unless the model's declared ladder lists `ultra` itself. A `reasoningEffortMap` alias for `max`
-applies to the folded value, and `__omit__` drops the field, except on thinking-toggle models,
-where the fold skips the alias map ([#8266](https://github.com/lidge-jun/opencodex/issues/8266)). Models with reasoning disabled (for
+applies to the folded value, and `__omit__` drops the effort field. On models with independent
+thinking and effort controls, the effort still selects the thinking switch; legacy thinking-toggle
+wires keep their existing discriminator mapping. Models with reasoning disabled (for
 example `noReasoningModels`) drop `reasoning_effort` entirely. Other caller values are forwarded
 as sent unless an effort pin or a qualifying effort cap rewrites them; rewritten values also go
 through the provider's wire mapping.
@@ -1403,6 +1407,10 @@ WorkBuddy's Chat endpoint. The Overview and Accounts tabs show remaining credits
 balances, and the next expiring non-daily credits when available. Refresh reads the signed-in
 account's billing summary; an unavailable read is not a zero balance. These credits are
 informational and do not disable free models when paid credits run out.
+When the reported total is positive, the header quota summary shows the unavailable percentage,
+including frozen credits, rounded to the nearest whole percent. It gives no exhaustion warning:
+free models may still work. An individual
+credit expiry is not shown as a reset of the entire balance.
 
 This uses an unofficial subscription protocol based on
 [Magpie's WorkBuddy plugin](https://github.com/magpie-community/plugins/tree/e7f65641df820dfd715c0d2241f99f2092e4efb1/packages/workbuddy).
