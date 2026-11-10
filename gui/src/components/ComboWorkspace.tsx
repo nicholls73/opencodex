@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   type ComboItem,
+  OPENAI_AUTO_MODEL_IDS,
+  OPENAI_AUTO_MODEL_PROFILES,
   comboModelId,
   emptyDraft,
   filterCombos,
@@ -10,6 +12,7 @@ import {
 } from "../combo-workspace-data";
 import { IconChevron, IconPlus, IconSearch, IconShuffle } from "../icons";
 import { useT } from "../i18n/shared";
+import { isOpenAIDecisionProvider } from "../jev-decision-service";
 import { AddComboModal } from "./combo-workspace-add-modal";
 import { DetailPanel } from "./combo-workspace-detail-panel";
 import { RemoveComboDialog, UnsavedLeaveDialog } from "./combo-workspace-dialogs";
@@ -72,8 +75,12 @@ export default function ComboWorkspace({
     // A deep-linked row that is not a usable decision service falls back to TypeSafe.
     const usable = providers.length === 0
       || jevDecisionProviderIssue(addDecisionProvider, providerMap) === null;
-    return jevAutoDraft(models, jevTargetProviders, usable ? addDecisionProvider : null);
-  }, [addDecisionProvider, addIntent, jevTargetProviders, models, providerMap, providers.length]);
+    const decisionProvider = usable ? addDecisionProvider : null;
+    const openaiDecision = isOpenAIDecisionProvider(providers.find(provider => provider.name === decisionProvider));
+    return jevAutoDraft(models, jevTargetProviders, decisionProvider,
+      openaiDecision ? "openai-auto" : "jev-auto", openaiDecision ? OPENAI_AUTO_MODEL_IDS : undefined,
+      openaiDecision ? OPENAI_AUTO_MODEL_PROFILES : undefined);
+  }, [addDecisionProvider, addIntent, jevTargetProviders, models, providerMap, providers]);
 
   const filtered = useMemo(() => filterCombos(combos, query), [combos, query]);
   const sections = useMemo(() => groupCombos(filtered), [filtered]);

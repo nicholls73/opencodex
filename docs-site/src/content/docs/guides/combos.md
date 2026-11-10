@@ -334,6 +334,34 @@ A pin makes provider cache reuse possible; whether the provider actually serves 
 depends on the provider, the account and a stable prompt prefix. `--session-pin -` (API `null`)
 turns it off, switching away from JEV removes it, and saves from the dashboard editor keep it.
 
+### OpenAI Decisions
+
+The **OpenAI Decisions** preset sends routing decisions directly to OpenAI using your API key.
+It uses the same Combo routing path as the other decision services; the selected model still
+runs through its existing provider connection.
+
+1. In **Providers → Add provider**, select **OpenAI Decisions**. Keep the endpoint
+   `https://api.openai.com/v1/decisions` and decision model `gpt-6-luna`.
+2. Add your OpenAI API key. A restricted key with **Decisions → Write** is sufficient;
+   model listing and Responses permissions are not needed for the decision service.
+3. Select **Test connection**, then **Create OpenAI router**. Review the allowed target models
+   and reasoning efforts, and save the Combo.
+4. Select the saved Combo in your client. Its routing decisions use OpenAI; its target requests
+   use the providers you selected in the Combo.
+
+The `openai-auto` starter prefills GPT-6 Astra → GPT-6.1 Sol → GPT-6.1 Terra → GPT-6 Luna
+when those models are available through eligible providers. You can add, remove, or reorder
+targets before saving. Creating it does not change your default model or existing Combos.
+Each starter target includes editable capability notes adapted from
+[OpenAI's model guidance](https://learn.chatgpt.com/docs/models#where-each-model-shines).
+These notes help the router distinguish the models; you can edit or clear them in the Combo's
+target settings. They are saved as `targets[].modelProfile` when you create the Combo.
+
+You can also select this provider in an existing JEV Combo's **Decision method** section.
+The saved configuration keeps `strategy: "jev"` and names the provider in `decisionProvider`.
+The preset uses the shared `jev-decision` adapter internally. The decision model remains editable
+in provider Settings; use a model supported by [OpenAI's Decisions API](https://developers.openai.com/api/docs/guides/decisions).
+
 ### Decision method
 
 `strategy: "jev"` asks a decision backend to choose the first eligible target and a compatible
@@ -462,15 +490,15 @@ Combo's `decisionProvider`:
 - Self-hosted services receive each target/effort option as a plain description string (for
   example `Target openai/gpt-5.6-sol (provider openai, model gpt-5.6-sol) with low reasoning
   effort.`), because Ollama accepts only string or `null` option descriptions. TypeSafe keeps
-  receiving the structured option objects. When targeting Vercel AI Gateway (`ai-gateway.vercel.sh`),
+  receiving the structured option objects. When targeting OpenAI Decisions or Vercel AI Gateway (`ai-gateway.vercel.sh`),
   route options include both `value` and detailed `description` fields. Other self-hosted endpoints,
   including a custom `/decisions` path, keep the System One request format.
 - OpenCodex offers 2–26 options to a System One-compatible row (`SELF_HOSTED_MIN_OPTIONS = 2`, `SELF_HOSTED_MAX_OPTIONS = 26`).
   Each target contributes one option per offered reasoning effort; use per-target `reasoningEfforts` to trim them.
-  Fewer than 2 or more than 26 options fail open without a request. For Vercel AI Gateway, whose
-  [OpenAI-compatible Decisions reference](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-decisions)
-  supports 1..255 choices, the upper bound expands to 255 options (`DECISIONS_MAX_OPTIONS = 255`); OpenCodex
-  enforces the 2-choice minimum as local routing policy to select among candidate targets.
+  Fewer than 2 or more than 26 options fail open without a request. For OpenAI Decisions and Vercel AI Gateway,
+  OpenCodex uses a 255-option upper bound (`DECISIONS_MAX_OPTIONS = 255`) and the same local 2-choice minimum.
+  Vercel's [OpenAI-compatible Decisions reference](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-decisions)
+  documents 1..255 choices; the local minimum selects among candidate targets.
 - Vercel AI Gateway endpoints (`https://ai-gateway.vercel.sh/v1`) automatically normalize to `/decisions`.
   OpenCodex projects structured conversation context into a formatted plain-text `input` string
   (`Task:`, `Signals:`, `Recent Assistant:`, `Recent Tool Call:`, and `Tool Output:`). Route answers are accepted

@@ -21,6 +21,9 @@ const models = [
   { provider: "openai", id: "gpt-6-astra", reasoningEfforts: ["medium", "high"] },
   { provider: "openai", id: "gpt-5.6-sol", reasoningEfforts: ["low", "medium"] },
   { provider: "openai", id: "gpt-5.6-luna", reasoningEfforts: ["low"] },
+  { provider: "openai", id: "gpt-6-luna", reasoningEfforts: ["low", "medium"] },
+  { provider: "openai", id: "gpt-6.1-terra", reasoningEfforts: ["medium", "high"] },
+  { provider: "openai", id: "gpt-6.1-sol", reasoningEfforts: ["low", "medium", "high"] },
 ];
 const providers = [
   { name: "openai", adapter: "openai-responses" },
@@ -62,8 +65,10 @@ async function flush(rounds = 3) {
 }
 
 
-function setInput(input: HTMLInputElement, value: string) {
-  Object.getOwnPropertyDescriptor(testWindow.HTMLInputElement.prototype, "value")!
+function setInput(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype = input.tagName === "TEXTAREA"
+    ? testWindow.HTMLTextAreaElement.prototype : testWindow.HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!
     .set!.call(input, value);
   input.dispatchEvent(new testWindow.Event("input", { bubbles: true }));
 }
@@ -73,7 +78,17 @@ function button(host: HTMLElement, text: string): HTMLButtonElement | undefined 
     .find(candidate => candidate.textContent?.trim() === text);
 }
 
-test("a keyless self-hosted decision row creates JEV Auto with itself as the decision service", async () => {
+test.each([
+  { name: "tev-local", baseUrl: "http://127.0.0.1:11434/v1/systemone", openai: false },
+  { name: "gateway-decisions", baseUrl: "https://ai-gateway.vercel.sh/v1/decisions", openai: false },
+  { name: "openai-decisions", baseUrl: "https://api.openai.com/v1/decisions", openai: true },
+  { name: "my-router", baseUrl: "https://api.openai.com/v1/decisions", openai: true },
+  { name: "my-router", baseUrl: "https://api.openai.com/v1/decisions/", openai: true },
+  { name: "openai-decisions", baseUrl: "http://127.0.0.1:11434/v1/systemone", openai: false },
+])("decision provider $name at $baseUrl keeps its identity through router creation", async ({ name, baseUrl, openai }) => {
+  const decisionRow = { name, baseUrl, adapter: "jev-decision", defaultModel: openai ? "gpt-6-luna" : "tev1:4b", disabled: false };
+  const configuredProviders = [...providers.filter(provider => provider.name !== "tev-local"), decisionRow];
+  const comboId = openai ? "openai-auto" : "jev-auto";
   const { createRoot } = await import("react-dom/client");
   const host = document.createElement("div");
   document.body.append(host);
@@ -84,11 +99,9 @@ test("a keyless self-hosted decision row creates JEV Auto with itself as the dec
       <LanguageProvider>
         <ProviderDetails
           item={{
-            name: "tev-local",
-            adapter: "jev-decision",
-            baseUrl: "http://127.0.0.1:11434/v1/systemone",
+            ...decisionRow,
             authMode: "key",
-            hasApiKey: false,
+            hasApiKey: openai,
           }}
           availableModels={[]}
           hasLiveModels={false}
@@ -97,22 +110,32 @@ test("a keyless self-hosted decision row creates JEV Auto with itself as the dec
           modelRevision="tev-test"
           modelRowsReady
           onOpenModels={() => {}}
-          onCreateJevAuto={() => navigateHash(jevAutoCreateHash("tev-local"))}
+          onSetDefault={() => { throw new Error("decision services cannot be inference defaults"); }}
+          onCreateJevAuto={() => navigateHash(jevAutoCreateHash(name))}
           onDeselect={() => {}}
           apiBase=""
         />
       </LanguageProvider>,
     );
   });
-  const providerAction = button(host, "Create JEV Auto");
+  if (openai) {
+    expect(button(host, "Set as default")).toBeUndefined();
+    expect(button(host, "Test all models")).toBeUndefined();
+    expect(host.textContent).not.toContain("First response");
+    expect(host.textContent).not.toContain(`${name}/<model>`);
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).not.toContain("Models");
+  } else {
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toContain("Models");
+  }
+  const providerAction = button(host, openai ? "Create OpenAI router" : "Create JEV Auto");
   expect(providerAction).toBeDefined();
   await act(async () => { providerAction!.click(); });
-  expect(window.location.hash).toBe("#models/combos/jev-auto?decisionProvider=tev-local");
+  expect(window.location.hash).toBe(`#models/combos/jev-auto?decisionProvider=${name}`);
 
   await act(async () => { root!.unmount(); });
   root = createRoot(host);
 
-  const puts: Array<{ combo: Record<string, unknown> }> = [];
+  const puts: Array<{ id: string; combo: Record<string, unknown> }> = [];
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
     value: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -124,7 +147,7 @@ test("a keyless self-hosted decision row creates JEV Auto with itself as the dec
       if (url.endsWith("/api/combos")) return Response.json({ combos: [] });
       if (url.endsWith("/api/config")) {
         return Response.json({
-          providers: Object.fromEntries(providers.map(({ name, adapter, baseUrl, defaultModel, disabled }) => [
+          providers: Object.fromEntries(configuredProviders.map(({ name, adapter, baseUrl, defaultModel, disabled }) => [
             name,
             { adapter, baseUrl: baseUrl ?? "", ...(defaultModel ? { defaultModel } : {}), ...(disabled ? { disabled } : {}) },
           ])),
@@ -143,18 +166,50 @@ test("a keyless self-hosted decision row creates JEV Auto with itself as the dec
 
   const dialog = host.querySelector<HTMLDialogElement>('dialog[data-combo-preset="jev-auto"]');
   expect(dialog).not.toBeNull();
-  // The deep-linked row selects the System One method; the select lists only server rows.
+  expect(dialog!.querySelector<HTMLInputElement>("#cwi-new-id")?.value).toBe(comboId);
+  expect(dialog!.querySelector<HTMLInputElement>("#cwi-new-alias")?.value).toBe(comboId);
+  expect(dialog!.querySelector('[role="radio"][aria-checked="true"]')?.textContent)
+    .toBe(openai ? "OpenAI Decisions" : "JEV");
+  const targetModels = openai
+    ? ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"]
+    : ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"];
+  expect([...dialog!.querySelectorAll<HTMLButtonElement>('[role="combobox"][aria-label="Model"]')]
+    .map(select => selectValue(select))).toEqual(targetModels);
+  const notes = [...dialog!.querySelectorAll<HTMLTextAreaElement>(".cwi-jev-target-meta textarea")];
+  expect(notes.map(note => note.value)).toEqual(openai ? [
+    expect.stringContaining("hardest end-to-end"),
+    expect.stringContaining("sustained coding"),
+    expect.stringContaining("visual interpretation"),
+    expect.stringContaining("clear, bounded tasks"),
+  ] : targetModels.map(() => ""));
+  if (openai) {
+    await act(async () => {
+      setInput(notes[0]!, "Use for our demanding architecture reviews.");
+      setInput(notes[1]!, "");
+    });
+    expect(notes[0]!.value).toBe("Use for our demanding architecture reviews.");
+    expect(notes[1]!.value).toBe("");
+  }
+  const savedProfiles = notes.map(note => note.value);
+  // The deep-linked row selects the external service method; stored method ids stay compatible.
   expect(host.querySelector("#cwi-new-decision-method-systemone")?.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector("#cwi-new-decision-method-systemone")?.textContent).toBe("Decision service");
   const service = selectTrigger(host, "#cwi-new-decision-provider");
-  expect(selectValue(service)).toBe("tev-local");
+  expect(selectValue(service)).toBe(name);
   expect((await selectOptions(service)).map(option => [option.value, option.label, option.disabled])).toEqual([
-    ["tev-local", "tev-local", false],
+    [name, name, false],
     // A disabled decision row is listed with its reason but cannot be picked.
     ["tev-off", "tev-off (disabled)", true],
   ]);
   expect(service.getAttribute("aria-describedby")).toBe("cwi-new-decision-provider-hint");
-  expect(host.querySelector("#cwi-new-decision-provider-hint")?.textContent).toContain("Self-hosted decision service");
-  expect(dialog!.textContent).toContain("http://127.0.0.1:11434/v1/systemone");
+  expect(host.querySelector("#cwi-new-decision-provider-hint")?.textContent).toContain("Only this provider's own API key");
+  expect(dialog!.textContent).toContain(baseUrl);
+  if (openai) {
+    expect(dialog!.textContent).toContain("OpenAI Decisions chooses an allowed model");
+    expect(dialog!.textContent).not.toContain("JEV chooses");
+    expect(dialog!.textContent).not.toContain("JEV may select");
+    expect(dialog!.textContent).not.toContain("Self-hosted decision service");
+  }
   const timeout = host.querySelector<HTMLInputElement>("#cwi-new-decision-timeout")!;
   expect(timeout.placeholder).toBe("4000");
   expect(timeout.getAttribute("aria-describedby")).toBe("cwi-new-decision-timeout-hint");
@@ -174,7 +229,12 @@ test("a keyless self-hosted decision row creates JEV Auto with itself as the dec
   await flush();
 
   expect(puts).toHaveLength(1);
-  expect(puts[0]!.combo).toMatchObject({ strategy: "jev", decisionProvider: "tev-local", decisionTimeoutMs: 60000 });
+  expect(puts[0]!.id).toBe(comboId);
+  expect(puts[0]!.combo).toMatchObject({ alias: comboId, strategy: "jev", decisionProvider: name, decisionTimeoutMs: 60000 });
+  expect(puts[0]!.combo.targets).toEqual(targetModels.map((model, index) => ({
+    provider: "openai", model,
+    ...(savedProfiles[index] ? { modelProfile: savedProfiles[index] } : {}),
+  })));
 });
 
 test("the overview names each JEV combo's service; the editor clears it and hides it off JEV", async () => {
