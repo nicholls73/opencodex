@@ -204,12 +204,19 @@ describe("JEV decision service in the combo workspace", () => {
     expect(toPutBody(selfHosted).combo.decisionProvider).toBe("tev-local");
   });
 
-  test("Create JEV Auto: key required for canonical jev only, and the deep link carries the row", () => {
+  test("Create JEV Auto: TypeSafe and native OpenAI Decisions require keys, and the deep link carries the row", () => {
     expect(canCreateJevAutoFrom({ name: "jev", adapter: "jev-decision", hasApiKey: true })).toBe(true);
     expect(canCreateJevAutoFrom({ name: "jev", adapter: "jev-decision", hasApiKey: false })).toBe(false);
     expect(canCreateJevAutoFrom({ name: "jev", adapter: "jev-decision", hasApiKey: true, disabled: true })).toBe(false);
+    const openai = { name: "renamed-openai", adapter: "jev-decision", baseUrl: "https://api.openai.com/v1/decisions", defaultModel: "gpt-5.6" };
+    expect(canCreateJevAutoFrom({ ...openai, hasApiKey: false })).toBe(false);
+    expect(canCreateJevAutoFrom({ ...openai, hasApiKey: true })).toBe(true);
+    expect(canCreateJevAutoFrom({ ...openai, hasApiKey: true, defaultModel: undefined })).toBe(false);
+    expect(canCreateJevAutoFrom({ ...openai, hasApiKey: true, disabled: true })).toBe(false);
     const tev = { name: "tev-local", adapter: "jev-decision", baseUrl: "http://127.0.0.1:11434/v1/systemone", defaultModel: "tev1:4b" };
     expect(canCreateJevAutoFrom({ ...tev, hasApiKey: false })).toBe(true);
+    const vercel = { name: "vercel", adapter: "jev-decision", baseUrl: "https://ai-gateway.vercel.sh/v1/systemone", defaultModel: "gpt-5.6" };
+    expect(canCreateJevAutoFrom({ ...vercel, hasApiKey: false })).toBe(true);
     expect(canCreateJevAutoFrom({ ...tev, disabled: true })).toBe(false);
     expect(canCreateJevAutoFrom({ ...tev, baseUrl: "http://127.0.0.1:11434/v1" })).toBe(false);
     expect(canCreateJevAutoFrom({ ...tev, defaultModel: undefined })).toBe(false);

@@ -3467,6 +3467,7 @@ export const en = {
   "modal.setupDecisionStep3": "Add the provider, then test its connection.",
   "cws.openaiDecisions.create": "Create OpenAI router",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions chooses an allowed model and reasoning effort for each request. The models use their existing provider connections.",
+  "cws.openaiDecisions.apiKeyHint": "Add an API key on the API keys tab to create an OpenAI router.",
   "cws.jev.create": "Create JEV Auto",
   "cws.jev.exists": "JEV Auto already exists.",
   "cws.jev.setupHint": "Create an optional, fully editable Combo. JEV chooses one allowed target and reasoning effort for each request.",

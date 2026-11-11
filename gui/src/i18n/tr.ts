@@ -3403,6 +3403,7 @@ export const tr: Record<TKey, string> = {
   "modal.setupDecisionStep3": "Sağlayıcıyı ekleyin, ardından bağlantısını test edin.",
   "cws.openaiDecisions.create": "OpenAI yönlendiricisi oluştur",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions her istek için izin verilen bir model ve akıl yürütme düzeyi seçer. Modeller mevcut sağlayıcı bağlantılarını kullanır.",
+  "cws.openaiDecisions.apiKeyHint": "OpenAI yönlendiricisi oluşturmak için API anahtarları sekmesinden bir API anahtarı ekleyin.",
   "cws.jev.create": "JEV Auto oluştur",
   "cws.jev.exists": "JEV Auto zaten mevcut.",
   "cws.jev.setupHint": "İsteğe bağlı ve tamamen düzenlenebilir bir kombo oluşturur. JEV her istek için izin verilen bir hedef ve akıl yürütme eforu seçer.",

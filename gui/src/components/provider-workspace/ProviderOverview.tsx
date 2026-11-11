@@ -20,7 +20,7 @@ import type { CatalogPreset } from "../provider-catalog/provider-presets";
 import ProviderSponsor from "./ProviderSponsor";
 import ProviderCompletionTest, { type CompletionProbeStatus } from "./ProviderCompletionTest";
 import { useProviderProbeState, type ProviderProbeController } from "./use-provider-probe-state";
-import { isOpenAIDecisionProvider } from "../../jev-decision-service";
+import { isOpenAIDecisionProvider, jevDecisionRowIssue } from "../../jev-decision-service";
 
 type ConnectionTestResult = {
   applicable?: boolean;
@@ -41,7 +41,7 @@ export default function ProviderOverview({
   item, preset, usageTotals, quotaReport, currentQuotaReading, onRefreshQuota, oauthEmail, currentAccountLabel, oauth,
   apiBase, connectionIdentity, probeController, availableModels = [], selectedModels, modelRows, modelRowsReady = false,
   modelsLoading = false, modelsLoadFailed = false, onRetryModels, onOpenAccounts, onOpenModelsTab, onOpenModels, onOpenConnect,
-  onEditSettings, onViewUsage, onUpdateProvider,
+  onEditSettings, onViewUsage, onUpdateProvider, onOpenApiKeys,
   onCreateJevAuto,
   onReauthenticate, onCancelLogin, reauthBusy = false,
 }: {
@@ -72,6 +72,7 @@ export default function ProviderOverview({
   connectionIdentity?: string;
   onEditSettings?: () => void;
   onViewUsage?: () => void;
+  onOpenApiKeys?: () => void;
   onCreateJevAuto?: () => void;
   onUpdateProvider?: (name: string, patch: ProviderUpdatePatch) => Promise<ProviderUpdateResult>;
   onReauthenticate?: () => void;
@@ -80,7 +81,9 @@ export default function ProviderOverview({
 }) {
   const t = useT();
   const openaiDecision = isOpenAIDecisionProvider(item);
+  const needsOpenAIDecisionKey = openaiDecision && item.hasApiKey !== true && jevDecisionRowIssue(item) === null;
   const createRouterLabel = t(openaiDecision ? "cws.openaiDecisions.create" : "cws.jev.create");
+  const routerSetupAction = needsOpenAIDecisionKey ? onOpenApiKeys : onCreateJevAuto;
   const { locale } = useI18n();
   const status = binProviderStatus(item);
   const vertexUnverified = usesUnverifiedVertexCredentials(item);
@@ -410,12 +413,14 @@ export default function ProviderOverview({
         )}
       </section>
 
-      {item.adapter === "jev-decision" && onCreateJevAuto && (
+      {item.adapter === "jev-decision" && routerSetupAction && (
         <section className="pws-section" aria-label={createRouterLabel}>
           <h3 className="pws-section-title">{createRouterLabel}</h3>
-          <p className="muted" style={{ marginTop: 0 }}>{t(openaiDecision ? "cws.openaiDecisions.setupHint" : "cws.jev.setupHint")}</p>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onCreateJevAuto}>
-            {createRouterLabel}
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t(needsOpenAIDecisionKey ? "cws.openaiDecisions.apiKeyHint" : openaiDecision ? "cws.openaiDecisions.setupHint" : "cws.jev.setupHint")}
+          </p>
+          <button type="button" className="btn btn-primary btn-sm" onClick={routerSetupAction}>
+            {needsOpenAIDecisionKey ? t("pws.apiKeys") : createRouterLabel}
           </button>
         </section>
       )}

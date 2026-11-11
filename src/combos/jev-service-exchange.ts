@@ -4,15 +4,17 @@ import {
   providerRedirectError,
 } from "../lib/provider-outbound";
 import {
-  isKeychainReference,
-  keychainReferenceBelongsToProvider,
+  GcpCredentialAsApiKeyError,
+  hasConfiguredProviderApiKey,
   resolveProviderApiKey,
+  selfHostedDecisionApiKeyReferenceAllowed,
 } from "../providers/api-key-resolve";
 import { providerMatchesRegistryTransport } from "../providers/registry";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import type { JevDecision, ResolveJevDecisionOptions } from "./jev";
 import {
   isDecisionsEndpoint,
+  isOpenAIDecisionsEndpoint,
   isSystemOneEndpoint,
   jevDecisionEndpointUrl,
   JEV_DECISION_TIMEOUT_DEFAULT_MS,
@@ -24,8 +26,6 @@ export const JEV_PROVIDER_ID = "jev";
 export const JEV_API_URL = "https://api.typesafe.ai/v1/systemone";
 export const JEV_MODEL = "jev-latest";
 
-/** Environment names that hold TypeSafe credentials; a self-hosted row may never reference them. */
-const TYPESAFE_ENV_KEYS = new Set(["TYPESAFE_API_KEY", "JEV_API_KEY"]);
 export const JEV_MAX_REQUEST_BYTES = 65_536;
 export const JEV_MAX_RESPONSE_BYTES = 65_536;
 const JEV_OUTBOUND_DEPENDENCIES = {
@@ -84,22 +84,13 @@ interface JevDecisionEndpoint {
   descriptiveCriteria: boolean;
 }
 
-/** Recognize the $NAME and ${NAME} credential references before applying self-hosted ownership rules. */
-function envReferenceName(value: string): string | undefined {
-  const braced = /^\$\{(\w+)\}$/.exec(value);
-  if (braced) return braced[1];
-  return value.startsWith("$") ? value.slice(1) : undefined;
-}
-
 /**
  * A self-hosted row may carry only its own secret: never a reference to the TypeSafe environment
  * keys, and never a keychain entry that belongs to another provider. `null` means refused.
  */
 function selfHostedApiKey(name: string, apiKey: string | undefined): string | undefined | null {
   if (!apiKey) return undefined;
-  const envName = envReferenceName(apiKey);
-  if (envName !== undefined && TYPESAFE_ENV_KEYS.has(envName)) return null;
-  if (isKeychainReference(apiKey) && !keychainReferenceBelongsToProvider(apiKey, name)) return null;
+  if (!selfHostedDecisionApiKeyReferenceAllowed(name, apiKey)) return null;
   return resolveProviderApiKey(apiKey)?.trim() || undefined;
 }
 
@@ -112,8 +103,8 @@ function selfHostedApiKey(name: string, apiKey: string | undefined): string | un
  * custom destination. Any other id must be an enabled `jev-decision` row whose baseUrl is a
  * full HTTPS decision endpoint (or a local HTTP `/systemone` endpoint) and which names its own
  * model; only its own key may accompany it, so no TypeSafe credential can reach a self-hosted
- * service. The URL is `jevDecisionEndpointUrl`, shared with the management surfaces: an HTTPS
- * path is sent exactly as configured and only `/systemone` normalizes trailing slashes.
+ * service. Native OpenAI Decisions additionally requires a resolved key. The URL is
+ * `jevDecisionEndpointUrl`, shared with the management surfaces.
  * `undefined` means no usable decision service (reported through the existing `missing_key`
  * gate); `null` means the request's destination scope refused it before any credential access.
  */
@@ -151,8 +142,17 @@ function jevDecisionEndpoint(
   const model = configured.defaultModel?.trim() || configured.models?.[0]?.trim();
   if (!model) return undefined;
   if (isDestinationAllowed?.(decisionProvider, model) === false) return null;
-  const apiKey = selfHostedApiKey(decisionProvider, configured.apiKey);
-  if (apiKey === null) return undefined;
+  const requiresApiKey = isOpenAIDecisionsEndpoint(url);
+  const configuredKey = configured.apiKey;
+  if (requiresApiKey && !hasConfiguredProviderApiKey(configuredKey)) return undefined;
+  let apiKey: string | undefined | null;
+  try {
+    apiKey = selfHostedApiKey(decisionProvider, configuredKey);
+  } catch (error) {
+    if (requiresApiKey && error instanceof GcpCredentialAsApiKeyError) return undefined;
+    throw error;
+  }
+  if (apiKey === null || (requiresApiKey && apiKey === undefined)) return undefined;
   return {
     name: decisionProvider,
     provider: configured,

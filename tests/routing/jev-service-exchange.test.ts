@@ -1,5 +1,5 @@
 import { isDecisionsEndpoint, jevDecisionEndpointUrl } from "../../src/combos/jev-decision-contract";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { parseJevDecision, resolveJevDecision, type JevCandidate } from "../../src/combos/jev";
 import {
   exchangeJevDecision,
@@ -7,6 +7,7 @@ import {
   type JevDecisionEndpointShape,
   type JevServiceExchangeOptions,
 } from "../../src/combos/jev-service-exchange";
+import { setProviderKeychainEntryFactoryForTests } from "../../src/providers/api-key-resolve";
 import type { OcxConfig, OcxProviderConfig } from "../../src/types";
 
 type Post = NonNullable<JevServiceExchangeOptions["post"]>;
@@ -72,11 +73,11 @@ describe("bounded JEV service exchange", () => {
     expect(result).toEqual({ value: { answers: { test: { choice: "yes" } } } });
   });
 
-  test("keyless self-hosted requests never borrow canonical environment keys", async () => {
+  test.each([row.baseUrl, "https://ai-gateway.vercel.sh/v1/systemone"])("keyless %s never borrows TypeSafe credentials", async (baseUrl) => {
     const previous = process.env.TYPESAFE_API_KEY;
     process.env.TYPESAFE_API_KEY = "fixture-typesafe-key";
     try {
-      expect(await exchangeJevDecision(options({ config: config("decider", { ...row, apiKey: undefined }),
+      expect(await exchangeJevDecision(options({ config: config("decider", { ...row, baseUrl, apiKey: undefined }),
         post: async (_name, _provider, _url, init) => {
           expect(new Headers(init.headers).has("authorization")).toBe(false);
           expect(String(init.body)).not.toContain("fixture-typesafe-key");
@@ -89,7 +90,7 @@ describe("bounded JEV service exchange", () => {
     }
   });
 
-  for (const apiKey of ["$TYPESAFE_API_KEY", "${TYPESAFE_API_KEY}", "$JEV_API_KEY", "${JEV_API_KEY}", "keychain:jev"]) {
+  for (const apiKey of ["$TYPESAFE_API_KEY", "${TYPESAFE_API_KEY}", "$JEV_API_KEY", "${JEV_API_KEY}", "keychain:jev", "keychain:other"]) {
     test(`refuses foreign credential reference ${apiKey} before preparation or POST`, async () => {
       expect(await exchangeJevDecision(options({ config: config("decider", { ...row, apiKey }),
         post: async () => { throw new Error("unexpected send"); },
@@ -581,6 +582,54 @@ describe("bounded JEV service exchange", () => {
         expect(choice.description.length).toBeGreaterThan(0);
       }
       expect(decision).toMatchObject({ gate: "apply", targetKey: "a/m2", effort: "low", confidence: 0.8, chosenProbability: 0.9 });
+    });
+
+    test.each([undefined, "", "  ", "$OCX_TEST_UNSET_OPENAI_DECISIONS_KEY"])(
+      "direct OpenAI Decisions with unusable key %j falls back without preparing or sending a decision",
+      async (apiKey) => {
+        const post = mock(okPost);
+        const prepareProbe = mock(prepare);
+        const opts = options({
+          config: config("decider", { ...row, baseUrl: "https://API.OPENAI.COM:443/v1/decisions/", apiKey }),
+          post,
+        });
+        expect(await exchangeJevDecision(opts, prepareProbe, parse)).toEqual({ gate: "missing_key" });
+        expect(await resolveJevDecision({ ...opts, body: { input: "Choose a target." }, candidates, fallback }))
+          .toMatchObject({ ...fallback, gate: "missing_key" });
+        expect(prepareProbe).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      },
+    );
+
+    test("OpenAI Decisions falls back when the keychain rejects its credential, unless the caller canceled", async () => {
+      const caller = new AbortController();
+      const reason = { caller: "stopped during credential resolution" };
+      let cancelOnRead = false;
+      setProviderKeychainEntryFactoryForTests(() => ({
+        getPassword() {
+          if (cancelOnRead) caller.abort(reason);
+          return '{"type":"service_account"}';
+        },
+        setPassword() { throw new Error("unexpected keychain write"); },
+        deletePassword() { throw new Error("unexpected keychain delete"); },
+      }));
+      try {
+        const post = mock(okPost);
+        const prepareProbe = mock(prepare);
+        const opts = options({
+          config: config("decider", { ...row, baseUrl: "https://api.openai.com/v1/decisions", apiKey: "keychain:decider" }),
+          signal: caller.signal,
+          post,
+        });
+        expect(await resolveJevDecision({ ...opts, body: { input: "Choose a target." }, candidates, fallback }))
+          .toMatchObject({ ...fallback, gate: "missing_key" });
+        cancelOnRead = true;
+        await expect(exchangeJevDecision(opts, prepareProbe, parse)).rejects.toBe(reason);
+        expect(prepareProbe).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      } finally {
+        setProviderKeychainEntryFactoryForTests(null);
+      }
     });
 
     test.each([

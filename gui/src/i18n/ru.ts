@@ -3564,6 +3564,7 @@ export const ru: Record<TKey, string> = {
   "modal.setupDecisionStep3": "Добавьте провайдера, затем проверьте подключение.",
   "cws.openaiDecisions.create": "Создать маршрутизатор OpenAI",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions выбирает разрешённую модель и уровень рассуждения для каждого запроса. Модели используют существующие подключения к провайдерам.",
+  "cws.openaiDecisions.apiKeyHint": "Добавьте ключ API на вкладке «Ключи API», чтобы создать маршрутизатор OpenAI.",
   "cws.jev.create": "Создать JEV Auto",
   "cws.jev.exists": "JEV Auto уже существует.",
   "cws.jev.setupHint": "Создаёт необязательное, полностью редактируемое комбо. JEV выбирает разрешённую цель и уровень рассуждения для каждого запроса.",

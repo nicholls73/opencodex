@@ -1,6 +1,6 @@
 # GUI And Management API
 The routing profiles dashboard shows its empty state only after a valid empty response; reloads hide it while pending, malformed envelopes and lists with no valid DTOs show a load error, and valid entries in mixed lists remain available.
-Provider PUT, POST and DELETE in `src/server/management/provider-routes.ts` run [GCP credential cleanup](providers/google.md#vertex-credential-markers) only after saving. `src/server/management/provider-gcp-credential-routes.ts` owns credential-input rejection responses and the locked deletion callback, which snapshots live and valid durable markers under the persistence lock. Rejected mutations and failed saves preserve secrets; other persisted references retain them. Vertex settings PATCH project and location explicitly, and the safe config DTO classifies credential kind without exposing its value; the GUI separates unverified host credentials from missing keys. See [LM Studio Chat instruction editor policy](providers/lm-studio-chat.md).
+Provider PUT, POST and DELETE in `src/server/management/provider-routes.ts` run [GCP credential cleanup](providers/google.md#vertex-credential-markers) only after saving. `src/server/management/provider-gcp-credential-routes.ts` owns credential-input rejection responses and the locked deletion callback, which snapshots live and valid durable markers under the persistence lock. Rejected mutations and failed saves preserve secrets; other persisted references retain them. Vertex settings PATCH project and location explicitly, and the safe config DTO classifies credential kind without exposing its value; native OpenAI Decisions `hasApiKey` requires a resolvable nonblank key. The GUI separates unverified host credentials from missing keys. See [LM Studio Chat instruction editor policy](providers/lm-studio-chat.md).
 Anthropic subscription labels and masked account display follow [subscription labels](providers/anthropic-account-pool.md#subscription-labels). `GET/PUT /api/codex-auth/preserve-signed-in` and CLI `account preserve-signed-in` expose the [signed-in quota policy](providers/openai-signed-in-preservation.md); strict boolean writes can explicitly release affected bindings/pins for the next request after persistence. The GUI retains its existing account controls. `src/server/management/combo-routes.ts` retains omitted `metered: true` metadata by trimmed provider/model identity during dashboard-shaped saves. Explicit false clears the flag; false defaults are omitted from persisted targets. Omitted combo `allowMeteredTargets` survives saves and renames; explicit false clears it and stays sparse. The CLI exposes `--allow-metered-targets on|off`, and receipts preserve the boolean. Key and loopback operator consent follow the [runtime contract](runtime.md#request-local-target-compatibility). Model-price APIs and receipt validation follow the [pricing contract](pricing.md). Anthropic OAuth account DTOs include `autoSwitchThresholdOverride` (integer or null),
 `autoSwitchThreshold` (pool default) and `effectiveAutoSwitchThreshold`. The dedicated `PUT /api/oauth/accounts/auto-switch` accepts `{ provider: "anthropic", accountId, threshold }`;
 explicit null restores inheritance and missing/invalid values fail. Other providers are rejected.
@@ -232,7 +232,6 @@ default preferences from becoming provider defaults and preserves explicitly emp
 
 API-key PATCH validates the entire rename/scope patch on a detached entry before replacing live configuration. A rejected field changes neither the existing name nor either scope, including a later unrelated save.
 
-
 The provider editor admits `googleToolSchemaPolicy` as an editor-safe, non-secret field. Its value
 is validated as `compatible` or `reject-lossy` before live adoption and persistence; an invalid
 value changes neither state. Omission remains absent and is resolved by the Google adapter rather
@@ -242,6 +241,7 @@ than materialized by the management API.
 key when it is unset: on the canonical `openai` row an absent value already means the upstream
 WebSocket transport, so answering `false` there would let a save that round-trips the row write
 that disable back to disk.
+
 
 `src/server/index.ts` authenticates and routes `/api/*`, then delegates to
 `src/server/management-api.ts`, which composes the route modules under `src/server/management/`.

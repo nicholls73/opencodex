@@ -2,6 +2,7 @@ import { providerRelativeSendPathConfigError } from "../config/provider-relative
 import { contextTierRecordConfigError, modelCapabilitiesConfigError, providerInputModalitiesConfigError } from "../config/provider-validation";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { initialModelSelection } from "../providers/initial-model-selection";
+import { hasUsableProviderApiKey } from "../providers/api-key-resolve";
 import { extractAccountId } from "../oauth/chatgpt";
 import { formatErrorResponse } from "../bridge";
 import {
@@ -1357,7 +1358,7 @@ export function safeConfigDTO(config: OcxConfig): unknown {
   for (const [name, provider] of Object.entries(config.providers)) {
     const dto: Record<string, unknown> = {
       ...editor.providers[name],
-      hasApiKey: !!provider.apiKey,
+      hasApiKey: hasUsableProviderApiKey(name, provider),
       hasHeaders: !!provider.headers && Object.keys(provider.headers).length > 0,
     };
     const registry = getProviderRegistryEntry(name);

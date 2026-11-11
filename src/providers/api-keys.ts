@@ -10,10 +10,12 @@ import { createHash } from "node:crypto";
 import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { GCP_CREDENTIAL_MARKER_PREFIX, isGcpCredentialMaterial, parseGcpCredentialJson } from "../lib/gcp-adc";
-import { invalidateResolvedProviderKeyCache, probeProviderKeychain, providerKeychainEntry } from "./api-key-resolve";
+import { hasConfiguredProviderApiKey, invalidateResolvedProviderKeyCache, isKeyAuthProvider, probeProviderKeychain, providerKeychainEntry } from "./api-key-resolve";
 import type { AccountQuotaFields } from "./quota-types";
 import { commitProviderApiKeySelection } from "./api-key-selection";
 import { cleanupRemovedGcpCredentials } from "./gcp-credential-cleanup";
+
+export { isKeyAuthProvider } from "./api-key-resolve";
 
 export interface ProviderApiKeyInfo extends AccountQuotaFields {
   id: string;
@@ -191,11 +193,6 @@ export function apiKeyPoolEntryId(key: string): string {
   return createHash("sha256").update(key).digest("hex").slice(0, 8);
 }
 
-/** True for providers whose upstream auth is a configured API key (not oauth/forward). */
-export function isKeyAuthProvider(provider: OcxProviderConfig): boolean {
-  return provider.authMode !== "oauth" && provider.authMode !== "forward";
-}
-
 /** Trim and reject blank / CRLF-bearing secrets. Shared by pool writes and OAuth upsert. */
 export function sanitizeApiKeyValue(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -206,7 +203,7 @@ export function sanitizeApiKeyValue(value: unknown): string | undefined {
 /** Seed the pool from a legacy bare `apiKey`, and keep `apiKey` mirrored to the active entry. */
 function ensurePool(provider: OcxProviderConfig): NonNullable<OcxProviderConfig["apiKeyPool"]> {
   if (!provider.apiKeyPool) provider.apiKeyPool = [];
-  if (provider.apiKeyPool.length === 0 && provider.apiKey) {
+  if (provider.apiKeyPool.length === 0 && hasConfiguredProviderApiKey(provider.apiKey)) {
     provider.apiKeyPool.push({ id: apiKeyPoolEntryId(provider.apiKey), key: provider.apiKey });
   }
   return provider.apiKeyPool;
@@ -214,11 +211,11 @@ function ensurePool(provider: OcxProviderConfig): NonNullable<OcxProviderConfig[
 
 export function listProviderApiKeys(config: OcxConfig, name: string): { activeId: string | null; keys: ProviderApiKeyInfo[] } {
   const provider = config.providers[name];
-  if (!provider || !isKeyAuthProvider(provider)) return { activeId: null, keys: [] };
+  if (!provider || !isKeyAuthProvider(provider, name)) return { activeId: null, keys: [] };
   // A GET projects a legacy key without seeding/mutating live configuration.
   const pool = provider.apiKeyPool?.length
     ? provider.apiKeyPool
-    : provider.apiKey ? [{ id: apiKeyPoolEntryId(provider.apiKey), key: provider.apiKey }] : [];
+    : hasConfiguredProviderApiKey(provider.apiKey) ? [{ id: apiKeyPoolEntryId(provider.apiKey), key: provider.apiKey }] : [];
   const activeId = pool.find(entry => entry.key === provider.apiKey)?.id ?? null;
   return {
     activeId,
@@ -237,7 +234,7 @@ export function listProviderApiKeys(config: OcxConfig, name: string): { activeId
 /** Add (or upsert) a key and make it ACTIVE. Persists config. */
 export function addProviderApiKey(config: OcxConfig, name: string, key: string, label?: string): { id: string } | { error: string } {
   const provider = config.providers[name];
-  if (!provider || !isKeyAuthProvider(provider)) return { error: "provider does not use API-key auth" };
+  if (!provider || !isKeyAuthProvider(provider, name)) return { error: "provider does not use API-key auth" };
   if (typeof key !== "string" || !key.trim()) return { error: "key is required" };
   // GCP credential JSON never enters the literal-key path: it is diverted to the OS keychain and
   // only the `gcp-sa:` marker is stored. splitCredentialPaste runs FIRST (before the CRLF
@@ -328,7 +325,7 @@ export function setActiveProviderApiKey(config: OcxConfig, name: string, id: str
 /** Rename a key slot without changing its id, secret, or active routing state. */
 export function setProviderApiKeyLabel(config: OcxConfig, name: string, id: string, label: string | undefined): boolean {
   const provider = config.providers[name];
-  if (!provider || !isKeyAuthProvider(provider)) return false;
+  if (!provider || !isKeyAuthProvider(provider, name)) return false;
   const entry = ensurePool(provider).find(e => e.id === id);
   if (!entry) return false;
   if (label) entry.label = label;

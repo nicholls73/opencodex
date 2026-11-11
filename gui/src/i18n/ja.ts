@@ -3473,6 +3473,7 @@ export const ja: Record<TKey, string> = {
   "modal.setupDecisionStep3": "プロバイダーを追加してから、接続をテストしてください。",
   "cws.openaiDecisions.create": "OpenAIルーターを作成",
   "cws.openaiDecisions.setupHint": "OpenAI Decisionsがリクエストごとに許可されたモデルと推論強度を選びます。モデルは既存のプロバイダー接続を使用します。",
+  "cws.openaiDecisions.apiKeyHint": "OpenAIルーターを作成するには、APIキーのタブでAPIキーを追加してください。",
   "cws.jev.create": "JEV Auto を作成",
   "cws.jev.exists": "JEV Auto はすでに存在します。",
   "cws.jev.setupHint": "任意で追加でき、完全に編集可能なコンボを作成します。JEV はリクエストごとに、許可されたターゲットを 1 つ選び、互換性のある effort を選択します。",

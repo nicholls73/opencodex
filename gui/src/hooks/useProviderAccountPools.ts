@@ -6,6 +6,7 @@ import { confirmAction, requestTextValue } from "../action-dialogs";
 import { credentialAliasRejection, CREDENTIAL_ALIAS_MAX_LENGTH } from "../credential-alias";
 import { accountNeedsReauth } from "../oauth-health-display";
 import { oauthAccountDisplayLabel } from "../provider-workspace/auth";
+import { isOpenAIDecisionProvider } from "../jev-decision-service";
 import { affinityResetRetries, subscribeAffinityResetRetries, rememberAffinityResetRetry, beginAffinityResetOperation } from "../provider-affinity-reset-retries";
 
 export interface Config {
@@ -38,6 +39,14 @@ export interface OAuthAccount extends AccountQuotaReading {
 }
 export interface ApiKeyEntry extends AccountQuotaReading { id: string; label?: string; masked: string; active: boolean; disabled?: boolean; pauseDetails?: { reason: string; pausedAt: number } }
 export interface AccountSelectionTarget { provider: string; kind: "oauth" | "api-key" }
+
+type ConfigProvider = Config["providers"][string];
+
+/** Native Decisions keys remain manageable even if the row's legacy authMode says otherwise. */
+function hasKeyPool(name: string, provider: ConfigProvider): boolean {
+  return isOpenAIDecisionProvider({ name, ...provider })
+    || provider.hasApiKey === true && provider.authMode !== "oauth" && provider.authMode !== "forward";
+}
 
 function selectionRows<T extends { id: string; active: boolean }>(rows: T[], id: string | null | undefined): T[] {
   return id === undefined ? rows : rows.map(row => ({ ...row, active: row.id === id }));
@@ -350,8 +359,8 @@ export function useProviderAccountPools(deps: {
   const refreshAccountRosters = useCallback(async (target?: AccountSelectionTarget, signal?: AbortSignal): Promise<boolean> => {
     if (!aliveRef.current || !mountedRef.current || serverRef.current !== apiBase || signal?.aborted) return false;
     const targets: AccountSelectionTarget[] = target ? [target] : Object.entries(config?.providers ?? {}).flatMap<AccountSelectionTarget>(([provider, p]) =>
-      p.authMode === "oauth" && provider !== "openai" ? [{ provider, kind: "oauth" as const }]
-        : p.hasApiKey && p.authMode !== "oauth" && p.authMode !== "forward" ? [{ provider, kind: "api-key" as const }] : []);
+      hasKeyPool(provider, p) ? [{ provider, kind: "api-key" as const }]
+        : p.authMode === "oauth" && provider !== "openai" ? [{ provider, kind: "oauth" as const }] : []);
     const results = await Promise.all(targets.map(async ({ provider, kind }) => {
       const key = `${kind === "oauth" ? "oauth" : "key"}:${provider}`;
       // PUT settlement always reconciles, including events received while it is pending.
@@ -887,7 +896,9 @@ export function useProviderAccountPools(deps: {
   };
 
   const oauthCardProviders = useMemo(
-    () => config ? Object.entries(config.providers).filter(([, p]) => p.authMode === "oauth").map(([n]) => n) : [],
+    () => config ? Object.entries(config.providers)
+      .filter(([name, provider]) => provider.authMode === "oauth" && !isOpenAIDecisionProvider({ name, ...provider }))
+      .map(([name]) => name) : [],
     [config],
   );
   useEffect(() => {
@@ -905,7 +916,7 @@ export function useProviderAccountPools(deps: {
   }, [apiBase, fetchAccountSets, oauthCardProviders]);
 
   const keyCardProviders = useMemo(
-    () => config ? Object.entries(config.providers).filter(([, p]) => p.hasApiKey && p.authMode !== "oauth" && p.authMode !== "forward").map(([n]) => n) : [],
+    () => config ? Object.entries(config.providers).filter(([name, provider]) => hasKeyPool(name, provider)).map(([name]) => name) : [],
     [config],
   );
   useEffect(() => {

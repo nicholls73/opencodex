@@ -9,6 +9,7 @@ import { routedProviderConfig } from "./routed-config";
 import { OPENCODE_GO_SESSION_HEADER } from "./opencode-go-transport";
 import { resolveProviderTransport, XAI_GROK_COMPATIBILITY, type OcxProviderTransport } from "./xai-transport";
 import { captureProviderApiKeySelection } from "./api-key-selection-capture";
+import { isKeyAuthProvider } from "./api-key-resolve";
 import { vertexEnvironmentKeyIsCurrent } from "./vertex-environment-authority";
 
 export { captureProviderApiKeySelection } from "./api-key-selection-capture";
@@ -118,7 +119,7 @@ export function commitProviderApiKeySelection<T>(
 ): ProviderApiKeyCommit<T> {
   const outcome = mutatePersistedConfig<ProviderApiKeyCommit<T> & { notify?: boolean }>(fresh => {
     const provider = fresh.providers[name];
-    if (!provider || provider.authMode === "oauth" || provider.authMode === "forward") {
+    if (!provider || !isKeyAuthProvider(provider, name)) {
       return { changed: false, value: { status: "unavailable" } };
     }
     if (expectedSelection && !matchesSelection(provider, expectedSelection)) {

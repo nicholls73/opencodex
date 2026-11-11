@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { comboConfigIssues, getCombo } from "../../src/combos";
 import { getConfigPath, loadConfig, readConfigDiagnostics, saveConfig } from "../../src/config";
 import { providerEditorConfigDTO } from "../../src/server/auth-cors";
+import { setProviderKeychainEntryFactoryForTests } from "../../src/providers/api-key-resolve";
 import { handleManagementAPI } from "../../src/server/management-api";
 import type { OcxConfig, OcxProviderConfig } from "../../src/types";
 import { catalogConvergenceFactory } from "../helpers/catalog-convergence";
@@ -141,6 +142,74 @@ describe("JEV decisionProvider combo validation", () => {
 });
 
 describe("JEV decisionProvider usability at save time", () => {
+  test.each(["local", "forward", "oauth"] as const)("native OpenAI Decisions with %s auth can replace a blank key", async authMode => {
+    await withTempHome(async () => {
+      const cfg = config();
+      const name = "renamed-decider";
+      cfg.providers[name] = {
+        ...selfHostedRow, baseUrl: "https://api.openai.com/v1/decisions", authMode, apiKey: " \t ",
+      };
+      saveConfig(cfg);
+
+      const listed = await (await api(cfg, "GET", "/api/providers")).json() as Array<{ name: string }>;
+      const detail = await (await api(cfg, "GET", "/api/config")).json() as { providers: Record<string, unknown> };
+      for (const provider of [listed.find(row => row.name === name), detail.providers[name]]) {
+        expect(provider).toMatchObject({ hasApiKey: false });
+        expect(provider).not.toHaveProperty("apiKey");
+      }
+      const probe = await api(cfg, "POST", `/api/providers/test?name=${name}`);
+      expect(await probe.json()).toMatchObject({ ok: false });
+
+      const added = await api(cfg, "POST", "/api/providers/keys", { name, key: "fixture-decisions-key" });
+      expect(added.status).toBe(201);
+      const saved = loadConfig().providers[name];
+      expect(saved).toMatchObject({ authMode, apiKey: "fixture-decisions-key" });
+      const keys = await (await api(cfg, "GET", `/api/providers/keys?name=${name}`)).json() as { keys: unknown[] };
+      expect(keys.keys).toEqual([expect.objectContaining({ active: true, masked: "fixt****-key" })]);
+
+      const previousEnv = process.env.OCX_TEST_UNSET_OPENAI_DECISIONS_KEY;
+      delete process.env.OCX_TEST_UNSET_OPENAI_DECISIONS_KEY;
+      cfg.providers[name]!.apiKey = "$OCX_TEST_UNSET_OPENAI_DECISIONS_KEY";
+      try {
+        const current = await (await api(cfg, "GET", "/api/providers")).json() as Array<{ name: string; hasApiKey: boolean }>;
+        const editor = await (await api(cfg, "GET", "/api/config")).json() as { providers: Record<string, { hasApiKey: boolean }> };
+        expect(current.find(row => row.name === name)?.hasApiKey).toBe(false);
+        expect(editor.providers[name]?.hasApiKey).toBe(false);
+        expect(await (await api(cfg, "POST", `/api/providers/test?name=${name}`)).json()).toMatchObject({ ok: false });
+      } finally {
+        if (previousEnv === undefined) delete process.env.OCX_TEST_UNSET_OPENAI_DECISIONS_KEY;
+        else process.env.OCX_TEST_UNSET_OPENAI_DECISIONS_KEY = previousEnv;
+      }
+
+      const previousTypesafeKey = process.env.TYPESAFE_API_KEY;
+      const previousJevKey = process.env.JEV_API_KEY;
+      process.env.TYPESAFE_API_KEY = "fixture-typesafe-key";
+      process.env.JEV_API_KEY = "fixture-jev-key";
+      let keychainReads = 0;
+      setProviderKeychainEntryFactoryForTests(() => ({
+        getPassword() { keychainReads++; return "fixture-foreign-key"; },
+        setPassword() { throw new Error("unexpected keychain write"); },
+        deletePassword() { throw new Error("unexpected keychain delete"); },
+      }));
+      try {
+        for (const apiKey of ["$TYPESAFE_API_KEY", "${TYPESAFE_API_KEY}", "$JEV_API_KEY", "${JEV_API_KEY}", "keychain:jev", "keychain:other-provider"]) {
+          cfg.providers[name]!.apiKey = apiKey;
+          const current = await (await api(cfg, "GET", "/api/providers")).json() as Array<{ name: string; hasApiKey: boolean }>;
+          const editor = await (await api(cfg, "GET", "/api/config")).json() as { providers: Record<string, { hasApiKey: boolean }> };
+          expect(current.find(row => row.name === name)?.hasApiKey).toBe(false);
+          expect(editor.providers[name]?.hasApiKey).toBe(false);
+        }
+        expect(keychainReads).toBe(0);
+      } finally {
+        setProviderKeychainEntryFactoryForTests(null);
+        if (previousTypesafeKey === undefined) delete process.env.TYPESAFE_API_KEY;
+        else process.env.TYPESAFE_API_KEY = previousTypesafeKey;
+        if (previousJevKey === undefined) delete process.env.JEV_API_KEY;
+        else process.env.JEV_API_KEY = previousJevKey;
+      }
+    });
+  });
+
   const rows = () => ({
     ...providers(),
     off: { ...selfHostedRow, disabled: true },

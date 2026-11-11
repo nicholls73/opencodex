@@ -21,12 +21,48 @@ import { invalidateDecisionKeyQuotas, observeDecisionKeyCredential } from "../li
 import { resolveEnvValue } from "../config/proxy-env";
 import { loadKeyringBinding } from "../lib/keyring-native";
 import { isGcpCredentialMaterial } from "../lib/gcp-credential-input";
+import { CANONICAL_JEV_DECISION_PROVIDER, isOpenAIDecisionsEndpoint } from "../combos/jev-decision-contract";
 import type { OcxProviderConfig } from "../types";
 
 export const KEYCHAIN_REFERENCE_PREFIX = "keychain:";
+const SELF_HOSTED_RESERVED_ENV_KEYS = new Set(["TYPESAFE_API_KEY", "JEV_API_KEY"]);
 /** Stored GCP JSON uses the same OS service, but must never be restored as a literal API key. */
 export const GCP_CREDENTIAL_MARKER_PREFIX = "gcp-sa:";
 export const PROVIDER_KEYCHAIN_SERVICE = "opencodex.provider-api-key.v1";
+
+export class GcpCredentialAsApiKeyError extends Error {
+  constructor() {
+    super("GCP credential JSON cannot be used as a literal API key; select a gcp-sa reference");
+    this.name = "GcpCredentialAsApiKeyError";
+  }
+}
+
+/** Config presence only: do not resolve a secret just to report whether a key slot is filled. */
+export function hasConfiguredProviderApiKey(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Only native OpenAI Decisions needs an existing reference to resolve before setup is usable. */
+export function hasUsableProviderApiKey(name: string, provider: OcxProviderConfig): boolean {
+  if (!hasConfiguredProviderApiKey(provider.apiKey)) return false;
+  const nativeOpenAI = name !== CANONICAL_JEV_DECISION_PROVIDER
+    && provider.adapter === "jev-decision" && isOpenAIDecisionsEndpoint(provider.baseUrl);
+  if (!nativeOpenAI) return true;
+  if (!selfHostedDecisionApiKeyReferenceAllowed(name, provider.apiKey)) return false;
+  try {
+    return Boolean(resolveProviderApiKeyQuietly(provider.apiKey)?.trim());
+  } catch (error) {
+    if (error instanceof GcpCredentialAsApiKeyError) return false;
+    throw error;
+  }
+}
+
+/** Native OpenAI Decisions uses its own key even when the row declares another auth mode. */
+export function isKeyAuthProvider(provider: OcxProviderConfig, name?: string): boolean {
+  return (provider.authMode !== "oauth" && provider.authMode !== "forward")
+    || (name !== undefined && name !== CANONICAL_JEV_DECISION_PROVIDER
+      && provider.adapter === "jev-decision" && isOpenAIDecisionsEndpoint(provider.baseUrl));
+}
 
 export interface ProviderKeychainEntry {
   getPassword(): string | null;
@@ -86,6 +122,14 @@ export function keychainReferenceBelongsToProvider(reference: string, name: stri
   return account === name || account.startsWith(`${name}/`);
 }
 
+/** Self-hosted decision rows cannot borrow TypeSafe env keys or another provider's keychain entry. */
+export function selfHostedDecisionApiKeyReferenceAllowed(name: string, value: string): boolean {
+  const braced = /^\$\{(\w+)\}$/.exec(value);
+  const envName = braced?.[1] ?? (value.startsWith("$") ? value.slice(1) : undefined);
+  return !(envName !== undefined && SELF_HOSTED_RESERVED_ENV_KEYS.has(envName))
+    && (!isKeychainReference(value) || keychainReferenceBelongsToProvider(value, name));
+}
+
 /** Entry for `account` under the provider-key service; read and write paths share the factory. */
 export function providerKeychainEntry(account: string): ProviderKeychainEntry {
   const entry = entryFactory(PROVIDER_KEYCHAIN_SERVICE, account);
@@ -113,7 +157,7 @@ function readKeychain(account: string, quiet = false): string | undefined {
     // fall through to the single warning below
   }
   if (typeof value === "string" && value.trim()) {
-    if (isGcpCredentialMaterial(value)) throw new Error("GCP credential JSON cannot be used as a literal API key; select a gcp-sa reference");
+    if (isGcpCredentialMaterial(value)) throw new GcpCredentialAsApiKeyError();
     resolvedCache.set(account, value);
     return value;
   }
