@@ -74,6 +74,7 @@ import { extractGoogleAiStudioModelItems } from "../../providers/google-ai-studi
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
 import { clearAccountQuotaCache, clearProviderQuotaCache, fetchProviderQuotaReports } from "../../providers/quota";
 import { getCachedProviderRoutingQuota } from "../../providers/quota-routing-cache";
+import { hasUsableProviderApiKey, isKeyAuthProvider } from "../../providers/api-key-resolve";
 import { PROVIDER_QUOTA_MAX_AGE_MS, type ProviderRoutingQuota } from "../../providers/quota-types";
 import { cachedProviderQuotaIsExhausted } from "../../combos/resolve";
 import { probeJevDecisionProvider } from "../../combos/jev";
@@ -909,7 +910,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
 
   if (url.pathname === "/api/providers" && req.method === "GET") {
     return jsonResponse(Object.entries(config.providers).map(([name, p]) => ({
-      name, adapter: p.adapter, baseUrl: publicProviderBaseUrl(p.baseUrl), defaultModel: p.defaultModel, hasApiKey: !!p.apiKey,
+      name, adapter: p.adapter, baseUrl: publicProviderBaseUrl(p.baseUrl), defaultModel: p.defaultModel, hasApiKey: hasUsableProviderApiKey(name, p),
       // Presence only (#959 review): header names and values never leave the process.
       hasHeaders: !!p.headers && Object.keys(p.headers).length > 0,
       allowPrivateNetwork: p.allowPrivateNetwork === true,
@@ -1607,7 +1608,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
       success: true,
       name,
       disabled: config.providers[name]!.disabled === true,
-      hasApiKey: !!config.providers[name]!.apiKey,
+      hasApiKey: hasUsableProviderApiKey(name, config.providers[name]!),
       ...(shadowDependency ? { dependentShadowIntercept: shadowDependency } : {}),
       ...(name === "xai"
         ? { xaiResponsesOptInState: xaiResponsesOptInState(config.providers[name]!) }
@@ -1632,7 +1633,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     if (prov.disabled) {
       return jsonResponse({ ok: false, error: "Provider is disabled", latencyMs: 0 });
     }
-    if (prov.authMode === "forward") {
+    if (prov.authMode === "forward" && !isKeyAuthProvider(prov, name)) {
       return jsonResponse({
         ok: true,
         latencyMs: 0,

@@ -7,6 +7,7 @@ import {
   type JevDecisionEndpointShape,
   type JevServiceExchangeOptions,
 } from "../../src/combos/jev-service-exchange";
+import { setProviderKeychainEntryFactoryForTests } from "../../src/providers/api-key-resolve";
 import type { OcxConfig, OcxProviderConfig } from "../../src/types";
 
 type Post = NonNullable<JevServiceExchangeOptions["post"]>;
@@ -89,7 +90,7 @@ describe("bounded JEV service exchange", () => {
     }
   });
 
-  for (const apiKey of ["$TYPESAFE_API_KEY", "${TYPESAFE_API_KEY}", "$JEV_API_KEY", "${JEV_API_KEY}", "keychain:jev"]) {
+  for (const apiKey of ["$TYPESAFE_API_KEY", "${TYPESAFE_API_KEY}", "$JEV_API_KEY", "${JEV_API_KEY}", "keychain:jev", "keychain:other"]) {
     test(`refuses foreign credential reference ${apiKey} before preparation or POST`, async () => {
       expect(await exchangeJevDecision(options({ config: config("decider", { ...row, apiKey }),
         post: async () => { throw new Error("unexpected send"); },
@@ -599,6 +600,37 @@ describe("bounded JEV service exchange", () => {
         expect(post).not.toHaveBeenCalled();
       },
     );
+
+    test("OpenAI Decisions falls back when the keychain rejects its credential, unless the caller canceled", async () => {
+      const caller = new AbortController();
+      const reason = { caller: "stopped during credential resolution" };
+      let cancelOnRead = false;
+      setProviderKeychainEntryFactoryForTests(() => ({
+        getPassword() {
+          if (cancelOnRead) caller.abort(reason);
+          return '{"type":"service_account"}';
+        },
+        setPassword() { throw new Error("unexpected keychain write"); },
+        deletePassword() { throw new Error("unexpected keychain delete"); },
+      }));
+      try {
+        const post = mock(okPost);
+        const prepareProbe = mock(prepare);
+        const opts = options({
+          config: config("decider", { ...row, baseUrl: "https://api.openai.com/v1/decisions", apiKey: "keychain:decider" }),
+          signal: caller.signal,
+          post,
+        });
+        expect(await resolveJevDecision({ ...opts, body: { input: "Choose a target." }, candidates, fallback }))
+          .toMatchObject({ ...fallback, gate: "missing_key" });
+        cancelOnRead = true;
+        await expect(exchangeJevDecision(opts, prepareProbe, parse)).rejects.toBe(reason);
+        expect(prepareProbe).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      } finally {
+        setProviderKeychainEntryFactoryForTests(null);
+      }
+    });
 
     test.each([
       "https://api.openai.com.example/v1/decisions", "https://example.com/v1/decisions",

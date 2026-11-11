@@ -28,8 +28,9 @@ via `jevDecisionEndpointUrl` in `src/combos/jev-decision-contract.ts` and `syste
 `src/server/management/decision-discovery.ts` (stripping trailing `/systemone` or slashes).
 The `openai-decisions` preset selects the same Decisions wire format for the exact endpoint
 `https://api.openai.com/v1/decisions` (normalizing trailing slashes), using the configured model and only that row's own key.
-Regardless of row name, this endpoint requires a resolvable key: the exchange returns `missing_key`
-before preparing or sending a decision otherwise. Key handling for Vercel and custom rows is unchanged.
+Renamed native rows still use API-key setup and connection testing regardless of `authMode`. The
+exchange requires a resolvable key and returns `missing_key` before preparation or POST if it is
+absent, blank, or rejected by the keychain resolver. Key handling for Vercel and custom rows is unchanged.
 Other origins, ports and paths retain the existing System One behavior. Connection tests use
 this decision endpoint without model discovery or inference calls; the native Settings allow an
 editable decision model instead of an inference-model picker. The native OpenAI setup is

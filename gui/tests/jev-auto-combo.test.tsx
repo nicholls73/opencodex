@@ -12,6 +12,7 @@ import Combos from "../src/pages/Combos";
 import { navigateHash } from "../src/hash-routing";
 import { readModelsTab } from "../src/pages/models-tab";
 import { toPutBody, type ComboItem, type ComboTarget } from "../src/combo-workspace-data";
+import { providerAuthSurface } from "../src/provider-workspace/auth";
 import { chooseOption, selectTrigger, selectValue } from "./helpers/custom-select";
 
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
@@ -254,21 +255,23 @@ test("JEV API key can be saved from the provider GUI", async () => {
   expect(saved).toEqual([{ provider: "jev", key: "test-jev-key" }]);
 });
 
-test("keyless native OpenAI Decisions directs setup to API Keys without offering router creation", async () => {
+test.each(["key", "local", "forward", "oauth"] as const)("keyless native OpenAI Decisions with %s auth directs setup to API Keys without offering router creation", async authMode => {
   const { createRoot } = await import("react-dom/client");
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
+  const provider = `renamed-openai-${authMode}`;
+  const saved: Array<{ provider: string; key: string }> = [];
 
   await act(async () => {
     root!.render(
       <LanguageProvider>
         <ProviderDetails
           item={{
-            name: "renamed-openai",
+            name: provider,
             adapter: "jev-decision",
             baseUrl: "https://api.openai.com/v1/decisions",
-            authMode: "key",
+            authMode,
             hasApiKey: false,
             defaultModel: "gpt-5.6",
           }}
@@ -283,7 +286,8 @@ test("keyless native OpenAI Decisions directs setup to API Keys without offering
           apiBase=""
           authHandlers={{
             onLogin: () => {}, onLogout: () => {}, onReauth: () => {}, onSwitchAccount: () => {}, onRemoveAccount: () => {},
-            onAddApiKey: async () => true, onSwitchApiKey: () => {}, onRemoveApiKey: () => {}, onEditAlias: () => {},
+            onAddApiKey: async (savedProvider, key) => { saved.push({ provider: savedProvider, key }); return true; },
+            onSwitchApiKey: () => {}, onRemoveApiKey: () => {}, onEditAlias: () => {},
           }}
         />
       </LanguageProvider>,
@@ -304,7 +308,27 @@ test("keyless native OpenAI Decisions directs setup to API Keys without offering
     .find(button => button.textContent?.trim() === "Add API key");
   expect(addKey).toBeDefined();
   await act(async () => { addKey!.click(); });
-  expect(host.querySelector<HTMLInputElement>('input[type="password"]')).toBeTruthy();
+  const input = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+  Object.getOwnPropertyDescriptor(testWindow.HTMLInputElement.prototype, "value")!
+    .set!.call(input, "test-openai-key");
+  await act(async () => { input.dispatchEvent(new testWindow.Event("input", { bubbles: true })); });
+  const saveKey = [...host.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "Add API key");
+  await act(async () => { saveKey!.click(); });
+  await flush();
+  expect(saved).toEqual([{ provider, key: "test-openai-key" }]);
+});
+
+test("non-native decision and other provider auth surfaces retain their normal selection", () => {
+  expect(providerAuthSurface({
+    name: "jev", adapter: "jev-decision", baseUrl: "https://api.typesafe.ai/v1/systemone", authMode: "key",
+  })).toBe("api-keys");
+  expect(providerAuthSurface({
+    name: "gateway-decisions", adapter: "jev-decision", baseUrl: "https://ai-gateway.vercel.sh/v1/decisions", authMode: "oauth",
+  })).toBe("oauth-accounts");
+  expect(providerAuthSurface({
+    name: "forward-provider", adapter: "openai-chat", baseUrl: "https://example.test/v1", authMode: "forward",
+  })).toBeNull();
 });
 
 test("configured JEV deep-link opens the shared editable Combo modal and submits the normal PUT", async () => {

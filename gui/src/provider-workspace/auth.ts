@@ -1,4 +1,5 @@
 import type { TFn } from "../i18n/shared";
+import { isOpenAIDecisionProvider } from "../jev-decision-service";
 import { isAccountProvider, type WorkspaceItem } from "./catalog";
 import { isLocalProvider } from "./kind";
 import { isSubscriptionCliProvider } from "./subscription-cli";
@@ -18,6 +19,7 @@ export interface OAuthAccountIdentity {
  */
 export function providerAuthSurface(item: WorkspaceItem): ProviderAuthSurface {
   if (isAccountProvider(item.name, item)) return "codex-accounts";
+  if (isOpenAIDecisionProvider(item)) return "api-keys";
 
   const mode = (item.authMode ?? "").toLowerCase();
   if (mode === "forward" || mode === "local" || isLocalProvider(item)) return null;

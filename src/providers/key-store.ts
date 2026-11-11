@@ -6,6 +6,7 @@ import {
   KEYCHAIN_REFERENCE_PREFIX,
   GCP_CREDENTIAL_MARKER_PREFIX,
   invalidateResolvedProviderKeyCache,
+  isKeyAuthProvider,
   isKeychainReference,
   keychainAccount,
   keychainReferenceBelongsToProvider,
@@ -75,7 +76,7 @@ function writeVerified(account: string, secret: string): void {
 export function storeProviderKeyInKeychain(config: OcxConfig, name: string): { ok: true; moved: number } | { ok: false; error: string; status: number } {
   const provider = config.providers[name];
   if (!provider) return { ok: false, error: "unknown provider", status: 404 };
-  if (provider.authMode === "oauth" || provider.authMode === "forward") {
+  if (!isKeyAuthProvider(provider, name)) {
     return { ok: false, error: "provider does not use API-key auth", status: 400 };
   }
   const probe = probeProviderKeychain();

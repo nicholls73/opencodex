@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, useLayoutEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useProviderAccountPools, type OAuthAccount, type ApiKeyEntry } from "../src/hooks/useProviderAccountPools";
+import { useProviderAccountPools, type Config as PoolHookConfig, type OAuthAccount, type ApiKeyEntry } from "../src/hooks/useProviderAccountPools";
 
 const globals = ["document", "window", "navigator", "fetch", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previous: Record<(typeof globals)[number], PropertyDescriptor | undefined>;
@@ -107,14 +107,42 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
-function Harness({ apiBase = "/quota-hook" }: { apiBase?: string }) {
+function Harness({ apiBase = "/quota-hook", config = null }: { apiBase?: string; config?: PoolHookConfig | null }) {
   const aliveRef = useRef(true);
-  const currentPools = useProviderAccountPools({ apiBase, config: null, aliveRef, t: key => key,
+  const currentPools = useProviderAccountPools({ apiBase, config, aliveRef, t: key => key,
     oauthStatus: {}, notify: () => {}, fetchConfig: noop, fetchOauth: noop,
     fetchProviderQuotas: noop, codexActiveNeedsReauth: false });
   useLayoutEffect(() => { pools = currentPools; }, [currentPools]);
   return null;
 }
+
+test.each(["local", "forward", "oauth"] as const)("native OpenAI Decisions %s rows load and refresh their API-key roster", async authMode => {
+  const provider = `renamed-openai-${authMode}`;
+  const config: PoolHookConfig = {
+    port: 0,
+    defaultProvider: provider,
+    providers: {
+      [provider]: {
+        adapter: "jev-decision",
+        baseUrl: "https://api.openai.com/v1/decisions",
+        authMode,
+        hasApiKey: false,
+      },
+    },
+  };
+  respond = async () => Response.json({ activeId: null, keys: [] });
+  await act(async () => {
+    root!.render(<Harness config={config} />);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(pools.keyCardProviders).toEqual([provider]);
+  expect(requests.map(request => request.url)).toContain(`/quota-hook/api/providers/keys?name=${provider}`);
+
+  requests = [];
+  await act(async () => { expect(await pools.refreshAccountRosters()).toBe(true); });
+  expect(requests.map(request => request.url)).toEqual([`/quota-hook/api/providers/keys?name=${provider}`]);
+});
 
 test("a roster read during logout cannot verify the current account", async () => {
   respond = async () => Response.json({ activeAccountId: "a", accounts: [{ id: "a", active: true, quotaMode: "unsupported" }] });

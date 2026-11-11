@@ -26,7 +26,7 @@ import type { CodexAccountMutationCompletion } from "../codex-account-mutation";
 import { useProviderModelsNotice } from "./use-provider-models-notice";
 import { navigateHash } from "../hash-routing";
 import { jevAutoCreateHash } from "../app-routing";
-import { canCreateJevAutoFrom } from "../jev-decision-service";
+import { canCreateJevAutoFrom, isOpenAIDecisionProvider } from "../jev-decision-service";
 import { useProviderSettingsDeepLink } from "./providers-deep-link";
 import { subscribeKiroDeviceFinal } from "../kiro-device-login-finalizer";
 import type { BrowserLaunch } from "../oauth-browser-launch";
@@ -434,8 +434,11 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   const refreshProviderQuota = useCallback((provider: string): Promise<boolean> => {
     const configured = config?.providers[provider];
     const mode = configured?.authMode;
+    const nativeOpenAIDecision = configured && isOpenAIDecisionProvider({ name: provider, ...configured });
     const readAccounts = configured && isAccountProvider(provider, configured)
       ? () => codexPool.load(true, { validatePending: true })
+      : nativeOpenAIDecision
+        ? () => fetchKeyPools([provider], true)
       : mode === "oauth"
         ? () => fetchAccountSets([provider], true)
         : mode === "forward" || mode === "local"

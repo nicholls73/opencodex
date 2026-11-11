@@ -349,8 +349,9 @@ runs through its existing provider connection.
 4. Select the saved Combo in your client. Its routing decisions use OpenAI; its target requests
    use the providers you selected in the Combo.
 
-**Create OpenAI router** appears after you configure an API key. If you saved the provider
-without one, add it in the provider's **API keys** tab. If the key is later removed or
+**Create OpenAI router** appears after you configure a nonblank API key. Add it in the
+provider's **API keys** tab, which is also available on renamed OpenAI Decisions rows.
+If the key is later removed or
 cannot be resolved, OpenCodex skips the decision request and uses the Combo's first
 eligible target.
 
