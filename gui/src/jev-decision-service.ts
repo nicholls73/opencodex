@@ -6,7 +6,7 @@
  */
 import {
   CANONICAL_JEV_DECISION_PROVIDER,
-  isDecisionsEndpoint,
+  isOpenAIDecisionsEndpoint,
   isSystemOneEndpoint,
 } from "../../src/combos/jev-decision-contract";
 import type { TKey } from "./i18n/shared";
@@ -29,11 +29,9 @@ export interface JevDecisionRow {
 
 /** Match the destination, so renaming a provider does not change its service identity. */
 export function isOpenAIDecisionProvider(row: (JevDecisionRow & { name?: string }) | undefined): boolean {
-  const baseUrl = row?.baseUrl ?? "";
   return row?.name !== CANONICAL_JEV_DECISION_PROVIDER
     && row?.adapter === "jev-decision"
-    && isDecisionsEndpoint(baseUrl)
-    && new URL(baseUrl).hostname === "api.openai.com";
+    && isOpenAIDecisionsEndpoint(row.baseUrl ?? "");
 }
 
 /**
@@ -52,14 +50,16 @@ export function jevDecisionRowIssue(row: JevDecisionRow | undefined): JevDecisio
 }
 
 /**
- * Whether a provider row offers "Create JEV Auto". The canonical `jev` row needs its TypeSafe
- * key; a self-hosted row may be keyless (e.g. a loopback Ollama endpoint) but must be usable.
+ * Whether a provider row offers "Create JEV Auto". TypeSafe and native OpenAI Decisions both
+ * need their own key; a self-hosted row may be keyless (e.g. a loopback Ollama endpoint) but
+ * must be usable.
  */
 export function canCreateJevAutoFrom(row: JevDecisionRow & { name: string; hasApiKey?: boolean }): boolean {
   if (row.name === CANONICAL_JEV_DECISION_PROVIDER) {
     return row.adapter === "jev-decision" && row.disabled !== true && row.hasApiKey === true;
   }
-  return jevDecisionRowIssue(row) === null;
+  return jevDecisionRowIssue(row) === null
+    && (!isOpenAIDecisionProvider(row) || row.hasApiKey === true);
 }
 
 

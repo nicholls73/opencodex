@@ -1,5 +1,5 @@
 import { isDecisionsEndpoint, jevDecisionEndpointUrl } from "../../src/combos/jev-decision-contract";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { parseJevDecision, resolveJevDecision, type JevCandidate } from "../../src/combos/jev";
 import {
   exchangeJevDecision,
@@ -72,11 +72,11 @@ describe("bounded JEV service exchange", () => {
     expect(result).toEqual({ value: { answers: { test: { choice: "yes" } } } });
   });
 
-  test("keyless self-hosted requests never borrow canonical environment keys", async () => {
+  test.each([row.baseUrl, "https://ai-gateway.vercel.sh/v1/systemone"])("keyless %s never borrows TypeSafe credentials", async (baseUrl) => {
     const previous = process.env.TYPESAFE_API_KEY;
     process.env.TYPESAFE_API_KEY = "fixture-typesafe-key";
     try {
-      expect(await exchangeJevDecision(options({ config: config("decider", { ...row, apiKey: undefined }),
+      expect(await exchangeJevDecision(options({ config: config("decider", { ...row, baseUrl, apiKey: undefined }),
         post: async (_name, _provider, _url, init) => {
           expect(new Headers(init.headers).has("authorization")).toBe(false);
           expect(String(init.body)).not.toContain("fixture-typesafe-key");
@@ -582,6 +582,23 @@ describe("bounded JEV service exchange", () => {
       }
       expect(decision).toMatchObject({ gate: "apply", targetKey: "a/m2", effort: "low", confidence: 0.8, chosenProbability: 0.9 });
     });
+
+    test.each([undefined, "", "  ", "$OCX_TEST_UNSET_OPENAI_DECISIONS_KEY"])(
+      "direct OpenAI Decisions with unusable key %j falls back without preparing or sending a decision",
+      async (apiKey) => {
+        const post = mock(okPost);
+        const prepareProbe = mock(prepare);
+        const opts = options({
+          config: config("decider", { ...row, baseUrl: "https://API.OPENAI.COM:443/v1/decisions/", apiKey }),
+          post,
+        });
+        expect(await exchangeJevDecision(opts, prepareProbe, parse)).toEqual({ gate: "missing_key" });
+        expect(await resolveJevDecision({ ...opts, body: { input: "Choose a target." }, candidates, fallback }))
+          .toMatchObject({ ...fallback, gate: "missing_key" });
+        expect(prepareProbe).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      },
+    );
 
     test.each([
       "https://api.openai.com.example/v1/decisions", "https://example.com/v1/decisions",

@@ -349,6 +349,11 @@ runs through its existing provider connection.
 4. Select the saved Combo in your client. Its routing decisions use OpenAI; its target requests
    use the providers you selected in the Combo.
 
+**Create OpenAI router** appears after you configure an API key. If you saved the provider
+without one, add it in the provider's **API keys** tab. If the key is later removed or
+cannot be resolved, OpenCodex skips the decision request and uses the Combo's first
+eligible target.
+
 The `openai-auto` starter prefills GPT-6 Astra → GPT-6.1 Sol → GPT-6.1 Terra → GPT-6 Luna
 when those models are available through eligible providers. You can add, remove, or reorder
 targets before saving. Creating it does not change your default model or existing Combos.

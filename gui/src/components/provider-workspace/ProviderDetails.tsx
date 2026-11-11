@@ -380,6 +380,7 @@ export default function ProviderDetails({
               ? oauthAccountDisplayLabel(accounts ?? [], activeOAuthAccount, t) : undefined}
             oauth={oauth}
             onEditSettings={() => switchTab("settings")}
+            onOpenApiKeys={authSurface === "api-keys" ? () => switchTab("accounts") : undefined}
             onViewUsage={() => switchTab("usage")}
             onCreateJevAuto={onCreateJevAuto}
             onUpdateProvider={handleUpdateProvider}

@@ -3373,6 +3373,7 @@ export const zh: Record<TKey, string> = {
   "modal.setupDecisionStep3": "添加提供商，然后测试连接。",
   "cws.openaiDecisions.create": "创建 OpenAI 路由器",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions 会为每个请求选择允许的模型和推理强度。模型使用现有的提供商连接。",
+  "cws.openaiDecisions.apiKeyHint": "请在 API 密钥标签页中添加 API 密钥，以创建 OpenAI 路由器。",
   "cws.jev.create": "创建 JEV Auto",
   "cws.jev.exists": "JEV Auto 已存在。",
   "cws.jev.setupHint": "创建一个可选且完全可编辑的组合。JEV 会为每个请求选择一个允许的目标和推理强度。",

@@ -3353,6 +3353,7 @@ export const de: Record<TKey, string> = {
   "modal.setupDecisionStep3": "Füge den Anbieter hinzu und teste anschließend die Verbindung.",
   "cws.openaiDecisions.create": "OpenAI-Router erstellen",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions wählt für jede Anfrage ein zulässiges Modell und einen Reasoning-Aufwand. Die Modelle nutzen ihre bestehenden Anbieter-Verbindungen.",
+  "cws.openaiDecisions.apiKeyHint": "Fügen Sie auf der Registerkarte API-Schlüssel einen API-Schlüssel hinzu, um einen OpenAI-Router zu erstellen.",
   "cws.jev.create": "JEV Auto erstellen",
   "cws.jev.exists": "JEV Auto ist bereits vorhanden.",
   "cws.jev.setupHint": "Erstellt eine optionale, vollständig bearbeitbare Combo. JEV wählt für jede Anfrage ein erlaubtes Ziel und einen Reasoning-Aufwand.",

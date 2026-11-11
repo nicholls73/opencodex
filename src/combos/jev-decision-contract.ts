@@ -38,31 +38,32 @@ export function isSystemOneEndpoint(baseUrl: string): boolean {
  */
 export function jevDecisionEndpointUrl(baseUrl: string): string {
   const raw = baseUrl.trim();
-  let stripped = raw.replace(/\/+$/, "");
-  try {
-    const parsed = new URL(raw);
-    if (parsed.hostname === "ai-gateway.vercel.sh") {
-      if (!stripped.endsWith("/decisions")) {
-        stripped = stripped.replace(/\/systemone$/, "").replace(/\/+$/, "") + "/decisions";
-      }
-      return stripped;
-    }
-    if (parsed.origin === "https://api.openai.com" && isDecisionsEndpoint(raw)) return stripped;
-  } catch {
-    return stripped.endsWith("/systemone") ? stripped : raw;
+  const stripped = raw.replace(/\/+$/, "");
+  const kind = decisionsEndpointKind(raw);
+  if (kind === "vercel" && !stripped.endsWith("/decisions")) {
+    return stripped.replace(/\/systemone$/, "").replace(/\/+$/, "") + "/decisions";
   }
-  return stripped.endsWith("/systemone") ? stripped : raw;
+  return kind || stripped.endsWith("/systemone") ? stripped : raw;
+}
+
+function decisionsEndpointKind(url: string): "vercel" | "openai" | undefined {
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.hostname === "ai-gateway.vercel.sh") return "vercel";
+    if (parsed.origin === "https://api.openai.com"
+      && parsed.pathname.replace(/\/+$/, "") === "/v1/decisions"
+      && isSystemOneEndpoint(url)) return "openai";
+  } catch {
+    return undefined;
+  }
 }
 
 /** Known Decisions services; a custom `/decisions` path may still expect System One. */
 export function isDecisionsEndpoint(url: string): boolean {
-  try {
-    const parsed = new URL(url.trim());
-    return parsed.hostname === "ai-gateway.vercel.sh"
-      || parsed.origin === "https://api.openai.com"
-        && parsed.pathname.replace(/\/+$/, "") === "/v1/decisions"
-        && isSystemOneEndpoint(url);
-  } catch {
-    return false;
-  }
+  return decisionsEndpointKind(url) !== undefined;
+}
+
+/** The native OpenAI Decisions service, independent of the provider row name. */
+export function isOpenAIDecisionsEndpoint(url: string): boolean {
+  return decisionsEndpointKind(url) === "openai";
 }

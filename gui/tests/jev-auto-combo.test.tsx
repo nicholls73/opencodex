@@ -254,6 +254,59 @@ test("JEV API key can be saved from the provider GUI", async () => {
   expect(saved).toEqual([{ provider: "jev", key: "test-jev-key" }]);
 });
 
+test("keyless native OpenAI Decisions directs setup to API Keys without offering router creation", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () => {
+    root!.render(
+      <LanguageProvider>
+        <ProviderDetails
+          item={{
+            name: "renamed-openai",
+            adapter: "jev-decision",
+            baseUrl: "https://api.openai.com/v1/decisions",
+            authMode: "key",
+            hasApiKey: false,
+            defaultModel: "gpt-5.6",
+          }}
+          availableModels={[]}
+          hasLiveModels={false}
+          selectedModels={[]}
+          modelRows={[]}
+          modelRevision="openai-decisions-test"
+          modelRowsReady
+          onOpenModels={() => {}}
+          onDeselect={() => {}}
+          apiBase=""
+          authHandlers={{
+            onLogin: () => {}, onLogout: () => {}, onReauth: () => {}, onSwitchAccount: () => {}, onRemoveAccount: () => {},
+            onAddApiKey: async () => true, onSwitchApiKey: () => {}, onRemoveApiKey: () => {}, onEditAlias: () => {},
+          }}
+        />
+      </LanguageProvider>,
+    );
+  });
+
+  expect(host.textContent).toContain("Add an API key on the API keys tab to create an OpenAI router.");
+  expect([...host.querySelectorAll<HTMLButtonElement>("button")]
+    .some(button => button.textContent?.trim() === "Create OpenAI router")).toBe(false);
+  const keySection = [...host.querySelectorAll<HTMLElement>(".pws-section")]
+    .find(section => section.getAttribute("aria-label") === "Create OpenAI router")!;
+  const keysAction = [...keySection.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "API Keys");
+  expect(keysAction).toBeDefined();
+  await act(async () => { keysAction!.click(); });
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("API Keys");
+  const addKey = [...host.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "Add API key");
+  expect(addKey).toBeDefined();
+  await act(async () => { addKey!.click(); });
+  expect(host.querySelector<HTMLInputElement>('input[type="password"]')).toBeTruthy();
+});
+
 test("configured JEV deep-link opens the shared editable Combo modal and submits the normal PUT", async () => {
   const { createRoot } = await import("react-dom/client");
   const host = document.createElement("div");

@@ -3400,6 +3400,7 @@ export const ko: Record<TKey, string> = {
   "modal.setupDecisionStep3": "공급자를 추가한 다음 연결을 테스트하세요.",
   "cws.openaiDecisions.create": "OpenAI 라우터 만들기",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions가 요청마다 허용된 모델과 추론 강도를 선택합니다. 모델은 기존 제공자 연결을 사용합니다.",
+  "cws.openaiDecisions.apiKeyHint": "OpenAI 라우터를 만들려면 API 키 탭에서 API 키를 추가하세요.",
   "cws.jev.create": "JEV Auto 만들기",
   "cws.jev.exists": "JEV Auto가 이미 있습니다.",
   "cws.jev.setupHint": "선택 사항인 완전 편집 가능 콤보를 만듭니다. JEV가 요청마다 허용된 대상과 추론 노력을 선택합니다.",

@@ -3391,6 +3391,7 @@ export const vi: Record<TKey, string> = {
   "modal.setupDecisionStep3": "Thêm nhà cung cấp, sau đó kiểm tra kết nối.",
   "cws.openaiDecisions.create": "Tạo bộ định tuyến OpenAI",
   "cws.openaiDecisions.setupHint": "OpenAI Decisions chọn mô hình được phép và mức suy luận cho mỗi yêu cầu. Các mô hình sử dụng kết nối nhà cung cấp hiện có.",
+  "cws.openaiDecisions.apiKeyHint": "Thêm khóa API trong thẻ Khóa API để tạo bộ định tuyến OpenAI.",
   "cws.jev.create": "Tạo JEV Auto",
   "cws.jev.exists": "JEV Auto đã tồn tại.",
   "cws.jev.setupHint": "Tạo một combo tùy chọn, có thể chỉnh sửa hoàn toàn. JEV chọn một mục tiêu được phép và mức suy luận cho mỗi yêu cầu.",

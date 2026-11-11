@@ -13,6 +13,7 @@ import type { OcxConfig, OcxProviderConfig } from "../types";
 import type { JevDecision, ResolveJevDecisionOptions } from "./jev";
 import {
   isDecisionsEndpoint,
+  isOpenAIDecisionsEndpoint,
   isSystemOneEndpoint,
   jevDecisionEndpointUrl,
   JEV_DECISION_TIMEOUT_DEFAULT_MS,
@@ -112,8 +113,8 @@ function selfHostedApiKey(name: string, apiKey: string | undefined): string | un
  * custom destination. Any other id must be an enabled `jev-decision` row whose baseUrl is a
  * full HTTPS decision endpoint (or a local HTTP `/systemone` endpoint) and which names its own
  * model; only its own key may accompany it, so no TypeSafe credential can reach a self-hosted
- * service. The URL is `jevDecisionEndpointUrl`, shared with the management surfaces: an HTTPS
- * path is sent exactly as configured and only `/systemone` normalizes trailing slashes.
+ * service. Native OpenAI Decisions additionally requires a resolved key. The URL is
+ * `jevDecisionEndpointUrl`, shared with the management surfaces.
  * `undefined` means no usable decision service (reported through the existing `missing_key`
  * gate); `null` means the request's destination scope refused it before any credential access.
  */
@@ -152,7 +153,7 @@ function jevDecisionEndpoint(
   if (!model) return undefined;
   if (isDestinationAllowed?.(decisionProvider, model) === false) return null;
   const apiKey = selfHostedApiKey(decisionProvider, configured.apiKey);
-  if (apiKey === null) return undefined;
+  if (apiKey === null || (apiKey === undefined && isOpenAIDecisionsEndpoint(url))) return undefined;
   return {
     name: decisionProvider,
     provider: configured,
