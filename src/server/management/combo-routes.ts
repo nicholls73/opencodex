@@ -43,6 +43,7 @@ import { getUsageDebugLogEntries } from "../../usage/debug";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../../codex/auth-context";
 import { getProviderRegistryEntry } from "../../providers/registry";
+import type { JevSessionPinConfig } from "../../combos/jev-session-pin-config";
 import { getDebugLogEntries } from "../../lib/debug-log-buffer";
 import { getInjectionDebugLogEntries } from "../../lib/injection-debug-log";
 import {
@@ -93,13 +94,15 @@ function sparseComboConfig<T extends {
   imageInput?: "auto" | "disabled";
   reasoningEffortMode?: "strict" | "adaptive";
   defaultEffortMode?: "fallback" | "force";
-}>(combo: T): Omit<T, "cooldownMs" | "waitForCooldownMs" | "cooldownWaitPolicy" | "imageInput" | "reasoningEffortMode" | "defaultEffortMode"> & {
+  sessionPin?: JevSessionPinConfig | false | null;
+}>(combo: T): Omit<T, "cooldownMs" | "waitForCooldownMs" | "cooldownWaitPolicy" | "imageInput" | "reasoningEffortMode" | "defaultEffortMode" | "sessionPin"> & {
   cooldownMs?: number;
   waitForCooldownMs?: number;
   cooldownWaitPolicy?: OcxComboCooldownWaitPolicy;
   imageInput?: "disabled";
   reasoningEffortMode?: "adaptive";
   defaultEffortMode?: "force";
+  sessionPin?: JevSessionPinConfig | false;
 } {
   const {
     cooldownMs,
@@ -108,13 +111,14 @@ function sparseComboConfig<T extends {
     imageInput,
     reasoningEffortMode,
     defaultEffortMode,
+    sessionPin,
     ...rest
   } = combo;
   return {
     ...rest,
     ...(cooldownMs !== undefined ? { cooldownMs } : {}),
     // #5691: the normalizer yields null for "unset"; persisting that would put a
-    // meaningless key in every stored combo. Only the opt-in value is written.
+    // meaningless key in every stored combo. Only non-default values are written.
     ...(cooldownWaitPolicy ? { cooldownWaitPolicy } : {}),
     ...(waitForCooldownMs !== undefined && waitForCooldownMs !== COMBO_DEFAULT_WAIT_FOR_COOLDOWN_MS
       ? { waitForCooldownMs }
@@ -122,6 +126,9 @@ function sparseComboConfig<T extends {
     ...(imageInput === "disabled" ? { imageInput: "disabled" as const } : {}),
     ...(reasoningEffortMode === "adaptive" ? { reasoningEffortMode: "adaptive" as const } : {}),
     ...(defaultEffortMode === "force" ? { defaultEffortMode: "force" as const } : {}),
+    ...(sessionPin === false || sessionPin?.ttlMs !== undefined
+      ? { sessionPin }
+      : {}),
   };
 }
 
@@ -228,7 +235,7 @@ export async function handleComboRoutes(ctx: ManagementContext): Promise<Respons
         : {}),
       ...(!Object.hasOwn(requestedCombo, "decisionQuotaSignals") && requestedCombo.strategy === "jev" && previous?.decisionQuotaSignals !== undefined ? { decisionQuotaSignals: previous.decisionQuotaSignals } : {}),
       ...(!Object.hasOwn(requestedCombo, "decisionQuotaTiers") && requestedCombo.strategy === "jev" && previous?.decisionQuotaTiers !== undefined ? { decisionQuotaTiers: previous.decisionQuotaTiers } : {}),
-      // The dashboard does not edit the session pin (#7525): an omitted field keeps it on a JEV save.
+      // Older clients omit the setting; preserve it on an unrelated JEV save.
       ...(!Object.hasOwn(requestedCombo, "sessionPin") && requestedCombo.strategy === "jev" && previous?.sessionPin != null ? { sessionPin: previous.sessionPin } : {}),
       ...(!Object.hasOwn(requestedCombo, "allowMeteredTargets") && previous?.allowMeteredTargets === true
         ? { allowMeteredTargets: true }

@@ -6,7 +6,7 @@
  */
 import {
   CANONICAL_JEV_DECISION_PROVIDER,
-  isOpenAIDecisionsEndpoint,
+  isOpenAIDecisionProvider,
   isSystemOneEndpoint,
 } from "../../src/combos/jev-decision-contract";
 import type { TKey } from "./i18n/shared";
@@ -14,6 +14,7 @@ import type { TKey } from "./i18n/shared";
 export {
   CANONICAL_JEV_DECISION_PROVIDER,
   isDecisionsEndpoint,
+  isOpenAIDecisionProvider,
   JEV_DECISION_TIMEOUT_DEFAULT_MS,
   JEV_DECISION_TIMEOUT_MAX_MS,
   JEV_DECISION_TIMEOUT_MIN_MS,
@@ -25,13 +26,6 @@ export interface JevDecisionRow {
   disabled?: boolean;
   defaultModel?: string;
   models?: readonly string[];
-}
-
-/** Match the destination, so renaming a provider does not change its service identity. */
-export function isOpenAIDecisionProvider(row: (JevDecisionRow & { name?: string }) | undefined): boolean {
-  return row?.name !== CANONICAL_JEV_DECISION_PROVIDER
-    && row?.adapter === "jev-decision"
-    && isOpenAIDecisionsEndpoint(row.baseUrl ?? "");
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   JEV_DECISION_TIMEOUT_DEFAULT_MS,
   JEV_DECISION_TIMEOUT_MAX_MS,
   JEV_DECISION_TIMEOUT_MIN_MS,
+  isOpenAIDecisionProvider,
   type JevDecisionMethod,
   jevDecisionMethod,
   jevDecisionModelOptions,
@@ -22,7 +23,7 @@ export type JevDecisionPatch = {
   decisionProvider?: string | null;
   decisionModel?: string | null;
   decisionTimeoutMs?: number | null;
-  sessionPin?: JevSessionPinConfig | null;
+  sessionPin?: JevSessionPinConfig | false | null;
 };
 
 type DecisionTestResult =
@@ -67,13 +68,20 @@ export function ComboJevDecisionSection({
   decisionProvider: string | null;
   decisionModel: string | null;
   decisionTimeoutMs: number | null;
-  sessionPin?: JevSessionPinConfig | null;
+  sessionPin?: JevSessionPinConfig | false | null;
   disabled?: boolean;
   onChange: (patch: JevDecisionPatch) => void;
 }) {
   const t = useT();
   const method = jevDecisionMethod({ decisionProvider, decisionModel });
-  const pinInvalid = sessionPin != null && !normalizeJevSessionPin(sessionPin);
+  const nativeOpenAI = !decisionModel?.trim()
+    && isOpenAIDecisionProvider(providers.find(provider => provider.name === decisionProvider?.trim()));
+  const sessionPinEnabled = sessionPin === false ? false : nativeOpenAI || sessionPin != null;
+  const normalizedSessionPin = sessionPin == null ? undefined : normalizeJevSessionPin(sessionPin);
+  // An empty pin selects native OpenAI's persistent default and is invalid for every other method.
+  const nativeOnlySessionPin = sessionPin !== false && sessionPin != null && normalizedSessionPin?.ttlMs === undefined;
+  const pinInvalid = sessionPinEnabled && sessionPin != null
+    && (!normalizedSessionPin || normalizedSessionPin.ttlMs === undefined && !nativeOpenAI);
   const servers = useMemo(
     () => jevDecisionServiceOptions(providers, decisionProvider).filter(option => option.id !== null),
     [providers, decisionProvider],
@@ -100,13 +108,15 @@ export function ComboJevDecisionSection({
     testAbort.current = null;
   }, [selectionKey]);
 
+  const clearNativeOnlyPin = (nextNativeOpenAI = false) => nativeOnlySessionPin && !nextNativeOpenAI ? { sessionPin: null } : {};
+
   const selectMethod = (next: JevDecisionMethod) => {
     if (next === method) return;
-    if (next === "typesafe") onChange({ decisionProvider: null, decisionModel: null });
+    if (next === "typesafe") onChange({ decisionProvider: null, decisionModel: null, ...clearNativeOnlyPin() });
     else if (next === "systemone") {
       const first = servers.find(option => !option.issue)?.id ?? servers[0]?.id ?? "";
-      onChange({ decisionProvider: first, decisionModel: null });
-    } else onChange({ decisionProvider: null, decisionModel: modelRoutes[0] ?? "" });
+      onChange({ decisionProvider: first, decisionModel: null, ...clearNativeOnlyPin() });
+    } else onChange({ decisionProvider: null, decisionModel: modelRoutes[0] ?? "", ...clearNativeOnlyPin() });
   };
 
   const canTest = method === "typesafe"
@@ -195,7 +205,11 @@ export function ComboJevDecisionSection({
               ? `${idPrefix}-decision-provider-hint ${idPrefix}-decision-provider-issue`
               : `${idPrefix}-decision-provider-hint`}
             aria-invalid={selectedServer?.issue ? true : undefined}
-            onChange={(e) => onChange({ decisionProvider: e.target.value, decisionModel: null })}
+            onChange={(e) => onChange({
+              decisionProvider: e.target.value,
+              decisionModel: null,
+              ...clearNativeOnlyPin(isOpenAIDecisionProvider(providers.find(provider => provider.name === e.target.value.trim()))),
+            })}
           >
             {!selectedServer && <option value="" disabled>—</option>}
             {servers.map(option => (
@@ -286,16 +300,18 @@ export function ComboJevDecisionSection({
           <input
             id={`${idPrefix}-session-pin`}
             type="checkbox"
-            checked={sessionPin != null}
+            checked={sessionPinEnabled}
             disabled={disabled}
             aria-describedby={`${idPrefix}-session-pin-hint`}
-            onChange={(e) => onChange({ sessionPin: e.target.checked ? { ttlMs: JEV_SESSION_PIN_TTL_MIN_MS } : null })}
+            onChange={(e) => onChange({ sessionPin: e.target.checked
+              ? (nativeOpenAI ? {} : { ttlMs: JEV_SESSION_PIN_TTL_MIN_MS })
+              : false })}
           /> {t("cws.jev.sessionPin")}
         </label>
         <p id={`${idPrefix}-session-pin-hint`} className="muted text-label">
-          {t("cws.jev.sessionPinHint", { min: JEV_SESSION_PIN_TTL_MIN_MS, max: JEV_SESSION_PIN_TTL_MAX_MS })}
+          {t("cws.jev.sessionPinHint")}
         </p>
-        {sessionPin != null && <>
+        {sessionPinEnabled && <>
           <label htmlFor={`${idPrefix}-session-pin-ttl`}>{t("cws.jev.sessionPinTtl")}</label>
           <input
             id={`${idPrefix}-session-pin-ttl`}
@@ -305,13 +321,13 @@ export function ComboJevDecisionSection({
             min={JEV_SESSION_PIN_TTL_MIN_MS}
             max={JEV_SESSION_PIN_TTL_MAX_MS}
             step={1}
-            value={sessionPin.ttlMs || ""}
+            value={normalizedSessionPin?.ttlMs ?? ""}
             disabled={disabled}
             aria-invalid={pinInvalid || undefined}
             aria-describedby={pinInvalid ? `${idPrefix}-session-pin-hint ${idPrefix}-session-pin-error` : `${idPrefix}-session-pin-hint`}
             onChange={(e) => {
               if (e.target.value === "") {
-                onChange({ sessionPin: { ttlMs: 0 } });
+                onChange({ sessionPin: nativeOpenAI ? {} : { ttlMs: 0 } });
                 return;
               }
               const ttlMs = Number(e.target.value);
