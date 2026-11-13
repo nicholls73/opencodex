@@ -79,6 +79,7 @@ async function openPage(sessionPin?: unknown, decisionProvider: string | null = 
     if (String(url).endsWith("/api/config")) return Response.json({ providers: {
       openai: { adapter: "openai-responses" },
       "openai-decisions": { adapter: "jev-decision", baseUrl: "https://api.openai.com/v1/decisions", defaultModel: "gpt-5.5" },
+      "generic-decisions": { adapter: "jev-decision", baseUrl: "http://127.0.0.1/systemone", defaultModel: "qwen3" },
     } });
     if (String(url).endsWith("/api/models")) return Response.json([{ provider: "openai", id: "gpt-5" }]);
     if (String(url).endsWith("/api/provider-quotas")) return Response.json({ reports: [] });
@@ -169,6 +170,41 @@ test("TypeSafe keeps the old opt-in timed-pin behavior", async () => {
   expect(input("#cwi-edit-session-pin-ttl").value).toBe("60000");
   await submit();
   expect(puts.at(-1)!.combo.sessionPin).toEqual({ ttlMs: 60000 });
+});
+
+for (const [method, expected] of [
+  ["typesafe", { decisionProvider: null, decisionModel: null }],
+  ["model", { decisionProvider: null, decisionModel: "openai/gpt-5" }],
+] as const) test(`switching from an explicit native pin to ${method} clears the native-only pin`, async () => {
+  const { puts } = await openPage({});
+  await act(async () => { host.querySelector<HTMLButtonElement>(`#cwi-edit-decision-method-${method}`)!.click(); });
+  expect(input("#cwi-edit-session-pin").checked).toBe(false);
+  expect(save().disabled).toBe(false);
+  await submit();
+  expect(puts.at(-1)!.combo).toMatchObject(expected);
+  expect(Object.hasOwn(puts.at(-1)!.combo, "sessionPin")).toBe(false);
+});
+
+test("switching from an explicit native pin to a generic decision service clears the native-only pin", async () => {
+  const { puts } = await openPage({});
+  await act(async () => { host.querySelector<HTMLButtonElement>("#cwi-edit-decision-provider")!.click(); });
+  await act(async () => { document.querySelector<HTMLButtonElement>('[role="option"][data-value="generic-decisions"]')!.click(); });
+  expect(input("#cwi-edit-session-pin").checked).toBe(false);
+  expect(save().disabled).toBe(false);
+  await submit();
+  expect(puts.at(-1)!.combo).toMatchObject({ decisionProvider: "generic-decisions", decisionModel: null });
+  expect(Object.hasOwn(puts.at(-1)!.combo, "sessionPin")).toBe(false);
+});
+
+for (const [sessionPin, expected] of [
+  [false, false],
+  [{ ttlMs: 90001 }, { ttlMs: 90001 }],
+] as const) test("switching decision method preserves an explicit pin override", async () => {
+  const { puts } = await openPage(sessionPin);
+  await act(async () => { host.querySelector<HTMLButtonElement>("#cwi-edit-decision-method-typesafe")!.click(); });
+  expect(save().disabled).toBe(false);
+  await submit();
+  expect(puts.at(-1)!.combo.sessionPin).toEqual(expected);
 });
 
 test("clearing a legacy custom TTL explicitly saves no expiry", async () => {

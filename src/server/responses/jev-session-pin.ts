@@ -131,7 +131,7 @@ export function jevSessionPinScope(args: {
   now?: () => number;
 }): JevSessionPinScope | undefined {
   const ttlMs = args.combo.sessionPin === false ? undefined : args.combo.sessionPin?.ttlMs;
-  if (args.combo.strategy !== "jev" || args.combo.sessionPin === false || !args.lane
+  if (args.combo.strategy !== "jev" || !args.lane
     || !args.openAIDecisions && ttlMs === undefined) return undefined;
   // Only native OpenAI Decisions uses a resolved loopback key to split local callers. Other JEV
   // backends keep their existing admission-based identity, even when a request has a client key.
@@ -151,6 +151,11 @@ export function jevSessionPinScope(args: {
     pins.delete(key);
     if (comboFingerprint) deleteStoredJevSessionPin(key);
   };
+  if (args.combo.sessionPin === false) {
+    remove();
+    fenceFailure(key);
+    return undefined;
+  }
   const read = (): PinEntry | undefined => {
     const live = pins.get(key);
     if (live || !comboFingerprint) return live;

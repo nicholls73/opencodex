@@ -78,6 +78,8 @@ export function ComboJevDecisionSection({
     && isOpenAIDecisionProvider(providers.find(provider => provider.name === decisionProvider?.trim()));
   const sessionPinEnabled = sessionPin === false ? false : nativeOpenAI || sessionPin != null;
   const normalizedSessionPin = sessionPin == null ? undefined : normalizeJevSessionPin(sessionPin);
+  // An empty pin selects native OpenAI's persistent default and is invalid for every other method.
+  const nativeOnlySessionPin = sessionPin !== false && sessionPin != null && normalizedSessionPin?.ttlMs === undefined;
   const pinInvalid = sessionPinEnabled && sessionPin != null
     && (!normalizedSessionPin || normalizedSessionPin.ttlMs === undefined && !nativeOpenAI);
   const servers = useMemo(
@@ -106,13 +108,15 @@ export function ComboJevDecisionSection({
     testAbort.current = null;
   }, [selectionKey]);
 
+  const clearNativeOnlyPin = (nextNativeOpenAI = false) => nativeOnlySessionPin && !nextNativeOpenAI ? { sessionPin: null } : {};
+
   const selectMethod = (next: JevDecisionMethod) => {
     if (next === method) return;
-    if (next === "typesafe") onChange({ decisionProvider: null, decisionModel: null });
+    if (next === "typesafe") onChange({ decisionProvider: null, decisionModel: null, ...clearNativeOnlyPin() });
     else if (next === "systemone") {
       const first = servers.find(option => !option.issue)?.id ?? servers[0]?.id ?? "";
-      onChange({ decisionProvider: first, decisionModel: null });
-    } else onChange({ decisionProvider: null, decisionModel: modelRoutes[0] ?? "" });
+      onChange({ decisionProvider: first, decisionModel: null, ...clearNativeOnlyPin() });
+    } else onChange({ decisionProvider: null, decisionModel: modelRoutes[0] ?? "", ...clearNativeOnlyPin() });
   };
 
   const canTest = method === "typesafe"
@@ -201,7 +205,11 @@ export function ComboJevDecisionSection({
               ? `${idPrefix}-decision-provider-hint ${idPrefix}-decision-provider-issue`
               : `${idPrefix}-decision-provider-hint`}
             aria-invalid={selectedServer?.issue ? true : undefined}
-            onChange={(e) => onChange({ decisionProvider: e.target.value, decisionModel: null })}
+            onChange={(e) => onChange({
+              decisionProvider: e.target.value,
+              decisionModel: null,
+              ...clearNativeOnlyPin(isOpenAIDecisionProvider(providers.find(provider => provider.name === e.target.value.trim()))),
+            })}
           >
             {!selectedServer && <option value="" disabled>—</option>}
             {servers.map(option => (

@@ -247,13 +247,15 @@ or an opencodex model route, with the timeout and a Test probe; there is no sepa
 
 `sessionPin` defaults to an enabled, no-expiry pin only when the selected service is the native
 OpenAI Decisions endpoint (`https://api.openai.com/v1/decisions`) on a configured
-`adapter: "jev-decision"` row (#7525). `false` opts out; `{ ttlMs }` overrides the default with
-an idle window. TypeSafe, other System One-compatible services and model-routed JEV remain
+`adapter: "jev-decision"` row (#7525). `false` opts out; a native request with pinning disabled
+clears that conversation's live and stored pin and fences its in-flight writers. `{ ttlMs }`
+overrides the default with an idle window. TypeSafe, other System One-compatible services and model-routed JEV remain
 opt-in: omission leaves their existing per-request decision behavior unchanged, and `{ ttlMs }`
 enables a process-local pin. `src/combos/jev-session-pin-config.ts` owns the 60000..86400000 ms
 range, CLI duration grammar and closed `pinReason` vocabulary. The shared editor defaults the
 checkbox on only for native OpenAI Decisions; other methods require an explicit timed pin. It
-blocks invalid and unsupported empty pin settings. Failed saves retain the draft for retry.
+clears a native-only empty pin when switching to another method or service, preserves explicit
+opt-outs and timed pins, and blocks invalid pin settings. Failed saves retain the draft for retry.
 Fresh Combo rows supersede the optimistic saved baseline, including same-ID pin changes.
 Validation accepts `false` for JEV and `{}` only for native OpenAI Decisions; sparse storage omits
 default-on settings, omitted-field preservation supports older clients, and switching strategies

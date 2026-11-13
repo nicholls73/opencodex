@@ -218,6 +218,31 @@ describe("JEV session pin scope", () => {
     }
   });
 
+  for (const clientPrincipalId of [undefined, "p-alice"]) {
+    test(`disabling native pins clears the conversation and fences old writers (${clientPrincipalId ?? "anonymous"})`, () => {
+      const home = createTempHome("ocx-jev-session-pin-disabled-");
+      const settings = { strategy: "jev" as const };
+      const native = { combo: settings, openAIDecisions: true, clientPrincipalId };
+      let lease: ReturnType<typeof acquireSpendLedgerOwner> | undefined;
+      try {
+        lease = acquireSpendLedgerOwner();
+        scope(native).complete(sol.key, applied, captureConfigGeneration());
+        scope({ ...native, lane: "other-conversation" }).complete(sol.key, applied, captureConfigGeneration());
+        const inFlight = scope(native);
+        expect(scope({ ...native, combo: { ...settings, sessionPin: false } })).toBeUndefined();
+        expect(scope(native).reuse([sol])).toEqual({});
+        inFlight.complete(sol.key, applied, captureConfigGeneration());
+        expect(scope(native).reuse([sol])).toEqual({});
+        expect(scope({ ...native, lane: "other-conversation" }).reuse([sol]).decision?.pinned).toBe(true);
+        lease.release();
+        lease = acquireSpendLedgerOwner();
+        expect(scope(native).reuse([sol])).toEqual({});
+      } finally {
+        try { lease?.release(); } finally { home.remove(); }
+      }
+    });
+  }
+
   test("an explicitly timed non-OpenAI pin stays in memory across restart only", () => {
     const home = createTempHome("ocx-jev-session-pin-memory-only-");
     const timedCombo = { strategy: "jev" as const, sessionPin: { ttlMs: TTL } };
