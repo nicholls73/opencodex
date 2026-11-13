@@ -67,3 +67,10 @@ export function isDecisionsEndpoint(url: string): boolean {
 export function isOpenAIDecisionsEndpoint(url: string): boolean {
   return decisionsEndpointKind(url) === "openai";
 }
+
+/** Native OpenAI Decisions only; hosted and self-hosted System One endpoints are not this service. */
+export function isOpenAIDecisionProvider(row: { adapter?: string; baseUrl?: string; name?: string } | undefined): boolean {
+  return row?.name !== CANONICAL_JEV_DECISION_PROVIDER
+    && row?.adapter === "jev-decision"
+    && isOpenAIDecisionsEndpoint(row.baseUrl ?? "");
+}

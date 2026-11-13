@@ -1,6 +1,5 @@
 /**
- * #7525: an opt-in JEV session pin keeps one client session on the target JEV chose for it, so the
- * provider prompt cache stays warm, while default-off Combos keep deciding on every request.
+ * #7525: native OpenAI Decisions pins a client session by default; other methods remain opt-in.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { clearComboSelectionState, clearComboTargetCooldowns, coolComboTarget } from "../../src/combos";
@@ -20,6 +19,7 @@ import { createTempHome } from "../helpers/temp-home";
 const JEV_URL = "https://api.typesafe.ai/v1/systemone";
 const SOL = { provider: "sol", model: "gpt-5.6-sol" } as const;
 const LUNA = { provider: "luna", model: "gpt-5.6-luna" } as const;
+const LOOPBACK: DataPlaneAdmission = { kind: "loopback", source: "loopback" };
 
 function resetState(): void {
   clearComboSelectionState();
@@ -43,16 +43,33 @@ function modelProvider(model: string): OcxProviderConfig {
 }
 
 /** A JEV Combo whose decision service records every call and always answers `choice`. */
-function makeConfig(choice: string, decisions: string[], sessionPin: boolean): OcxConfig {
+function makeConfig(
+  choice: string,
+  decisions: string[],
+  sessionPin?: boolean,
+  method: "typesafe" | "openai" | "generic" = "typesafe",
+): OcxConfig {
   const jevFetch = (async () => {
     decisions.push(choice);
     return Response.json({ answers: { route: { choice, confidence: 0.8 } } });
   }) as typeof fetch;
+  const decisionProvider = method === "typesafe" ? undefined : method === "openai" ? "native-decisions" : "generic-decisions";
   return {
     port: 0,
     defaultProvider: "sol",
     providers: {
       jev: { adapter: "jev-decision", baseUrl: JEV_URL, authMode: "key", liveModels: false, apiKey: "typesafe-test-key", fetch: jevFetch },
+      ...(decisionProvider ? {
+        [decisionProvider]: {
+          adapter: "jev-decision",
+          baseUrl: method === "openai" ? "https://api.openai.com/v1/decisions" : "https://decision.example.test/v1/systemone",
+          authMode: "key",
+          liveModels: false,
+          defaultModel: "decision-fixture",
+          apiKey: "decision-test-key",
+          fetch: jevFetch,
+        },
+      } : {}),
       sol: modelProvider(SOL.model),
       luna: modelProvider(LUNA.model),
     },
@@ -60,8 +77,9 @@ function makeConfig(choice: string, decisions: string[], sessionPin: boolean): O
       auto: {
         alias: "jev-auto",
         strategy: "jev",
+        ...(decisionProvider ? { decisionProvider } : {}),
         targets: [{ ...LUNA }, { ...SOL }],
-        ...(sessionPin ? { sessionPin: { ttlMs: 20 * 60_000 } } : {}),
+        ...(sessionPin === true ? { sessionPin: { ttlMs: 20 * 60_000 } } : sessionPin === false ? { sessionPin: false } : {}),
       },
     },
   };
@@ -91,6 +109,7 @@ const served: Child = (body, complete) => {
 async function turn(config: OcxConfig, options: {
   session?: string | null;
   admission?: DataPlaneAdmission;
+  apiKey?: string;
   child?: Child;
   signal?: AbortSignal;
   log?: RequestLogContext;
@@ -98,6 +117,7 @@ async function turn(config: OcxConfig, options: {
 } = {}): Promise<Response> {
   const body = { model: "jev-auto", input: "Implement the next step.", stream: false };
   const headers: Record<string, string> = { "content-type": "application/json" };
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
   if (options.session !== null) headers.session_id = options.session ?? "session-a";
   const request = new Request("http://127.0.0.1/v1/responses", { method: "POST", headers, body: JSON.stringify(body) });
   const budget = createTranslatorBudget();
@@ -117,9 +137,39 @@ async function turn(config: OcxConfig, options: {
 }
 
 describe("JEV session pin (#7525)", () => {
-  test("default off: every turn of one session asks JEV again and records no pin", async () => {
+  test("TypeSafe remains unpinned unless the existing timed option is enabled", async () => {
     const decisions: string[] = [];
-    const config = makeConfig("sol/gpt-5.6-sol:high", decisions, false);
+    const config = makeConfig("sol/gpt-5.6-sol:high", decisions);
+    const log: RequestLogContext = { model: "", provider: "" };
+    expect((await turn(config)).status).toBe(200);
+    expect((await turn(config, { log })).status).toBe(200);
+    expect(decisions).toHaveLength(2);
+    expect(log.jevDecision).not.toHaveProperty("pinned");
+  });
+
+  test("native OpenAI Decisions defaults to reusing its first decision", async () => {
+    const decisions: string[] = [];
+    const config = makeConfig("sol/gpt-5.6-sol:high", decisions, undefined, "openai");
+    const log: RequestLogContext = { model: "", provider: "" };
+    expect((await turn(config)).status).toBe(200);
+    expect((await turn(config, { log })).status).toBe(200);
+    expect(decisions).toHaveLength(1);
+    expect(log.jevDecision).toMatchObject({ pinned: true, pinReason: "session" });
+  });
+
+  test("generic decision services remain unpinned by default", async () => {
+    const decisions: string[] = [];
+    const config = makeConfig("sol/gpt-5.6-sol:high", decisions, undefined, "generic");
+    const log: RequestLogContext = { model: "", provider: "" };
+    expect((await turn(config)).status).toBe(200);
+    expect((await turn(config, { log })).status).toBe(200);
+    expect(decisions).toHaveLength(2);
+    expect(log.jevDecision).not.toHaveProperty("pinned");
+  });
+
+  test("explicit false disables the native OpenAI default", async () => {
+    const decisions: string[] = [];
+    const config = makeConfig("sol/gpt-5.6-sol:high", decisions, false, "openai");
     const log: RequestLogContext = { model: "", provider: "" };
     expect((await turn(config)).status).toBe(200);
     expect((await turn(config, { log })).status).toBe(200);
@@ -167,6 +217,34 @@ describe("JEV session pin (#7525)", () => {
     await turn(config, { admission: alice });
     expect(decisions).toHaveLength(5);
   });
+
+  test("loopback API-key callers do not share native OpenAI session pins", async () => {
+    const decisions: string[] = [];
+    const config = makeConfig("sol/gpt-5.6-sol:high", decisions, undefined, "openai");
+    config.apiKeys = [
+      { id: "alice", name: "Alice", key: "local-alice", createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "bob", name: "Bob", key: "local-bob", createdAt: "2026-01-01T00:00:00.000Z" },
+    ];
+    await turn(config, { admission: LOOPBACK, apiKey: "local-alice" });
+    await turn(config, { admission: LOOPBACK, apiKey: "local-bob" });
+    await turn(config, { admission: LOOPBACK, apiKey: "local-alice" });
+    expect(decisions).toHaveLength(2);
+  });
+
+  for (const method of ["typesafe", "generic"] as const) {
+    test(`${method} loopback session-pin behavior stays unchanged`, async () => {
+      const decisions: string[] = [];
+      const config = makeConfig("sol/gpt-5.6-sol:high", decisions, true, method);
+      config.apiKeys = [
+        { id: "alice", name: "Alice", key: "local-alice", createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "bob", name: "Bob", key: "local-bob", createdAt: "2026-01-01T00:00:00.000Z" },
+      ];
+      await turn(config, { admission: LOOPBACK, apiKey: "local-alice" });
+      await turn(config, { admission: LOOPBACK, apiKey: "local-bob" });
+      await turn(config, { admission: LOOPBACK, apiKey: "local-alice" });
+      expect(decisions).toHaveLength(1);
+    });
+  }
 
   test("a failed pinned send hops over and the next turn is decided afresh", async () => {
     const decisions: string[] = [];
